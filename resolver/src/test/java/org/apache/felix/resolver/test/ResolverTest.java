@@ -31,9 +31,11 @@ import java.util.Map;
 import org.apache.felix.resolver.Logger;
 import org.apache.felix.resolver.ResolverImpl;
 import org.junit.Test;
+import org.osgi.framework.namespace.BundleNamespace;
 import org.osgi.framework.namespace.IdentityNamespace;
 import org.osgi.framework.namespace.PackageNamespace;
 import org.osgi.resource.Capability;
+import org.osgi.resource.Namespace;
 import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wire;
@@ -129,6 +131,78 @@ public class ResolverTest
         assertTrue(foundBar);
     }
 
+    @Test
+    public void testScenario3() throws Exception
+    {
+        Resolver resolver = new ResolverImpl(new Logger(Logger.LOG_DEBUG));
+
+        Map<Resource, Wiring> wirings = new HashMap<Resource, Wiring>();
+        Map<Requirement, List<Capability>> candMap = new HashMap<Requirement, List<Capability>>();
+        List<Resource> mandatory = populateScenario3(wirings, candMap);
+        ResolveContextImpl rci = new ResolveContextImpl(wirings, candMap, mandatory, Collections.<Resource> emptyList());
+
+        Map<Resource, List<Wire>> wireMap = resolver.resolve(rci);
+        assertEquals(3, wireMap.size());
+
+        Resource cRes = findResource("C", wireMap.keySet());
+        List<Wire> cWires = wireMap.get(cRes);
+        assertEquals(0, cWires.size());
+
+        Resource dRes = findResource("D", wireMap.keySet());
+        List<Wire> dWires = wireMap.get(dRes);
+        assertEquals(1, dWires.size());
+        Wire dWire = dWires.iterator().next();
+        assertEquals(cRes, dWire.getProvider());
+        assertEquals(dRes, dWire.getRequirer());
+        Capability dwCap = dWire.getCapability();
+        assertEquals(PackageNamespace.PACKAGE_NAMESPACE, dwCap.getNamespace());
+        assertEquals(1, dwCap.getAttributes().size());
+        assertEquals("resources", dwCap.getAttributes().get(PackageNamespace.PACKAGE_NAMESPACE));
+        assertEquals(0, dwCap.getDirectives().size());
+        assertEquals(cRes, dwCap.getResource());
+
+        Resource eRes = findResource("E", wireMap.keySet());
+        List<Wire> eWires = wireMap.get(eRes);
+        assertEquals(2, eWires.size());
+
+        boolean foundC = false;
+        boolean foundD = false;
+        for (Wire w : eWires)
+        {
+            assertEquals(eRes, w.getRequirer());
+
+            Capability cap = w.getCapability();
+            if (cap.getNamespace().equals(PackageNamespace.PACKAGE_NAMESPACE)) {
+                assertEquals("resources", cap.getAttributes().get(PackageNamespace.PACKAGE_NAMESPACE));
+                assertEquals(0, cap.getDirectives().size());
+                assertEquals(cRes, cap.getResource());
+                foundC = true;
+
+                Requirement req = w.getRequirement();
+                assertEquals(PackageNamespace.PACKAGE_NAMESPACE, req.getNamespace());
+                assertEquals(eRes, req.getResource());
+                assertEquals(0, req.getAttributes().size());
+                assertEquals(1, req.getDirectives().size());
+                assertEquals("(osgi.wiring.package=resources)", req.getDirectives().get("filter"));
+            } else if (cap.getNamespace().equals(BundleNamespace.BUNDLE_NAMESPACE)) {
+                assertEquals("D", cap.getAttributes().get(BundleNamespace.BUNDLE_NAMESPACE));
+                assertEquals(1, cap.getDirectives().size());
+                assertEquals("resources", cap.getDirectives().get(Namespace.CAPABILITY_USES_DIRECTIVE));
+                assertEquals(dRes, cap.getResource());
+                foundD = true;
+
+                Requirement req = w.getRequirement();
+                assertEquals(BundleNamespace.BUNDLE_NAMESPACE, req.getNamespace());
+                assertEquals(eRes, req.getResource());
+                assertEquals(0, req.getAttributes().size());
+                assertEquals(1, req.getDirectives().size());
+                assertEquals("(osgi.wiring.bundle=D)", req.getDirectives().get("filter"));
+            }
+        }
+        assertTrue(foundC);
+        assertTrue(foundD);
+    }
+
     private static Resource findResource(String identity, Collection<Resource> resources)
     {
         for (Resource r : resources)
@@ -192,4 +266,53 @@ public class ResolverTest
         return resources;
     }
 
+    private static List<Resource> populateScenario3(Map<Resource, Wiring> wirings, Map<Requirement, List<Capability>> candMap)
+    {
+        List<Capability> dResourcesCands = new ArrayList<Capability>();
+        List<Capability> eBundleDCands = new ArrayList<Capability>();
+        List<Capability> eResourcesCands = new ArrayList<Capability>();
+
+        // B
+        ResourceImpl b = new ResourceImpl("B");
+        PackageCapability pc = new PackageCapability(b, "resources");
+        b.addCapability(pc);
+        eResourcesCands.add(pc);
+
+        // C
+        ResourceImpl c = new ResourceImpl("C");
+        pc = new PackageCapability(c, "resources");
+        c.addCapability(pc);
+        eResourcesCands.add(pc);
+        dResourcesCands.add(pc);
+
+        // D
+        ResourceImpl d = new ResourceImpl("D");
+        pc = new PackageCapability(d, "export");
+        pc.addDirective(Namespace.CAPABILITY_USES_DIRECTIVE, "resources");
+        d.addCapability(pc);
+
+        BundleCapability bc = new BundleCapability(d, "D");
+        bc.addDirective(Namespace.CAPABILITY_USES_DIRECTIVE, "resources");
+        d.addCapability(bc);
+        eBundleDCands.add(bc);
+
+        Requirement r = new PackageRequirement(d, "resources");
+        d.addRequirement(r);
+        candMap.put(r, dResourcesCands);
+
+        // E
+        ResourceImpl e = new ResourceImpl("E");
+        r = new BundleRequirement(e, "D");
+        e.addRequirement(r);
+        candMap.put(r, eBundleDCands);
+
+        r = new PackageRequirement(e, "resources");
+        e.addRequirement(r);
+        candMap.put(r, eResourcesCands);
+
+        // Mandatory resources
+        List<Resource> resources = new ArrayList<Resource>();
+        resources.add(e);
+        return resources;
+    }
 }
