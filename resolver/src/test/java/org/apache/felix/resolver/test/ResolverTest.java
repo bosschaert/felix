@@ -19,6 +19,7 @@
 package org.apache.felix.resolver.test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -48,13 +49,10 @@ public class ResolverTest
 
         Map<Resource, Wiring> wirings = new HashMap<Resource, Wiring>();
         Map<Requirement, List<Capability>> candMap = new HashMap<Requirement, List<Capability>>();
-        List<Resource> mandatory;
-        ResolveContextImpl rci;
-        Map<Resource, List<Wire>> wireMap;
+        List<Resource> mandatory = populateScenario1(wirings, candMap);
+        ResolveContextImpl rci = new ResolveContextImpl(wirings, candMap, mandatory, Collections.<Resource> emptyList());
 
-        mandatory = populateScenario1(wirings, candMap);
-        rci = new ResolveContextImpl(wirings, candMap, mandatory, Collections.<Resource>emptyList());
-        wireMap = resolver.resolve(rci);
+        Map<Resource, List<Wire>> wireMap = resolver.resolve(rci);
         assertEquals(2, wireMap.size());
 
         Resource aRes = findResource("A", wireMap.keySet());
@@ -62,7 +60,6 @@ public class ResolverTest
         assertEquals(0, aWires.size());
 
         Resource bRes = findResource("B", wireMap.keySet());
-
         List<Wire> bWires = wireMap.get(bRes);
         assertEquals(1, bWires.size());
         Wire bWire = bWires.iterator().next();
@@ -83,11 +80,61 @@ public class ResolverTest
         assertEquals(bRes, req.getResource());
     }
 
+    @Test
+    public void testScenario2() throws Exception
+    {
+        Resolver resolver = new ResolverImpl(new Logger(Logger.LOG_DEBUG));
+
+        Map<Resource, Wiring> wirings = new HashMap<Resource, Wiring>();
+        Map<Requirement, List<Capability>> candMap = new HashMap<Requirement, List<Capability>>();
+        List<Resource> mandatory = populateScenario2(wirings, candMap);
+        ResolveContextImpl rci = new ResolveContextImpl(wirings, candMap, mandatory, Collections.<Resource> emptyList());
+
+        Map<Resource, List<Wire>> wireMap = resolver.resolve(rci);
+        assertEquals(2, wireMap.size());
+
+        Resource bRes = findResource("B", wireMap.keySet());
+        List<Wire> bWires = wireMap.get(bRes);
+        assertEquals(0, bWires.size());
+
+        Resource cRes = findResource("C", wireMap.keySet());
+        List<Wire> cWires = wireMap.get(cRes);
+        assertEquals(2, cWires.size());
+
+        boolean foundFoo = false;
+        boolean foundBar = false;
+        for (Wire w : cWires)
+        {
+            assertEquals(bRes, w.getProvider());
+            assertEquals(cRes, w.getRequirer());
+
+            Capability cap = w.getCapability();
+            assertEquals(PackageNamespace.PACKAGE_NAMESPACE, cap.getNamespace());
+            assertEquals(bRes, cap.getResource());
+            Map<String, Object> attrs = cap.getAttributes();
+            assertEquals(1, attrs.size());
+            Object pkg = attrs.get(PackageNamespace.PACKAGE_NAMESPACE);
+            if ("foo".equals(pkg))
+            {
+                foundFoo = true;
+                assertEquals(0, cap.getDirectives().size());
+            } else if ("bar".equals(pkg))
+            {
+                foundBar = true;
+                assertEquals(1, cap.getDirectives().size());
+                assertEquals("foo", cap.getDirectives().get(PackageNamespace.CAPABILITY_USES_DIRECTIVE));
+            }
+        }
+        assertTrue(foundFoo);
+        assertTrue(foundBar);
+    }
+
     private static Resource findResource(String identity, Collection<Resource> resources)
     {
         for (Resource r : resources)
         {
-            for (Capability c : r.getCapabilities(IdentityNamespace.IDENTITY_NAMESPACE)) {
+            for (Capability c : r.getCapabilities(IdentityNamespace.IDENTITY_NAMESPACE))
+            {
                 if (identity.equals(c.getAttributes().get(IdentityNamespace.IDENTITY_NAMESPACE)))
                     return r;
             }
@@ -97,9 +144,6 @@ public class ResolverTest
 
     private static List<Resource> populateScenario1(Map<Resource, Wiring> wirings, Map<Requirement, List<Capability>> candMap)
     {
-        wirings.clear();
-        candMap.clear();
-
         ResourceImpl exporter = new ResourceImpl("A");
         exporter.addCapability(new PackageCapability(exporter, "foo"));
         ResourceImpl importer = new ResourceImpl("B");
@@ -107,6 +151,44 @@ public class ResolverTest
         candMap.put(importer.getRequirements(null).get(0), exporter.getCapabilities(PackageNamespace.PACKAGE_NAMESPACE));
         List<Resource> resources = new ArrayList<Resource>();
         resources.add(importer);
+        return resources;
+    }
+
+    private static List<Resource> populateScenario2(Map<Resource, Wiring> wirings, Map<Requirement, List<Capability>> candMap)
+    {
+        List<Capability> fooCands = new ArrayList<Capability>();
+        List<Capability> barCands = new ArrayList<Capability>();
+
+        // A
+        ResourceImpl a = new ResourceImpl("A");
+        PackageCapability p = new PackageCapability(a, "foo");
+        a.addCapability(p);
+        fooCands.add(p);
+
+        // B
+        ResourceImpl b = new ResourceImpl("B");
+        p = new PackageCapability(b, "foo");
+        b.addCapability(p);
+        fooCands.add(p);
+
+        p = new PackageCapability(b, "bar");
+        p.addDirective(PackageNamespace.CAPABILITY_USES_DIRECTIVE, "foo");
+        b.addCapability(p);
+        barCands.add(p);
+
+        // C
+        ResourceImpl c = new ResourceImpl("C");
+        Requirement r = new PackageRequirement(c, "foo");
+        c.addRequirement(r);
+        candMap.put(r, fooCands);
+
+        r = new PackageRequirement(c, "bar");
+        c.addRequirement(r);
+        candMap.put(r, barCands);
+
+        // Mandatory resources
+        List<Resource> resources = new ArrayList<Resource>();
+        resources.add(c);
         return resources;
     }
 
