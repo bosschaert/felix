@@ -20,6 +20,7 @@ package org.apache.felix.resolver.test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -40,6 +41,7 @@ import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wire;
 import org.osgi.resource.Wiring;
+import org.osgi.service.resolver.ResolutionException;
 import org.osgi.service.resolver.Resolver;
 
 public class ResolverTest
@@ -120,7 +122,8 @@ public class ResolverTest
             {
                 foundFoo = true;
                 assertEquals(0, cap.getDirectives().size());
-            } else if ("bar".equals(pkg))
+            }
+            else if ("bar".equals(pkg))
             {
                 foundBar = true;
                 assertEquals(1, cap.getDirectives().size());
@@ -172,7 +175,8 @@ public class ResolverTest
             assertEquals(eRes, w.getRequirer());
 
             Capability cap = w.getCapability();
-            if (cap.getNamespace().equals(PackageNamespace.PACKAGE_NAMESPACE)) {
+            if (cap.getNamespace().equals(PackageNamespace.PACKAGE_NAMESPACE))
+            {
                 assertEquals("resources", cap.getAttributes().get(PackageNamespace.PACKAGE_NAMESPACE));
                 assertEquals(0, cap.getDirectives().size());
                 assertEquals(cRes, cap.getResource());
@@ -184,7 +188,9 @@ public class ResolverTest
                 assertEquals(0, req.getAttributes().size());
                 assertEquals(1, req.getDirectives().size());
                 assertEquals("(osgi.wiring.package=resources)", req.getDirectives().get("filter"));
-            } else if (cap.getNamespace().equals(BundleNamespace.BUNDLE_NAMESPACE)) {
+            }
+            else if (cap.getNamespace().equals(BundleNamespace.BUNDLE_NAMESPACE))
+            {
                 assertEquals("D", cap.getAttributes().get(BundleNamespace.BUNDLE_NAMESPACE));
                 assertEquals(1, cap.getDirectives().size());
                 assertEquals("resources", cap.getDirectives().get(Namespace.CAPABILITY_USES_DIRECTIVE));
@@ -201,6 +207,48 @@ public class ResolverTest
         }
         assertTrue(foundC);
         assertTrue(foundD);
+    }
+
+    @Test
+    public void testScenario4() throws Exception
+    {
+        Resolver resolver = new ResolverImpl(new Logger(Logger.LOG_DEBUG));
+
+        Map<Resource, Wiring> wirings = new HashMap<Resource, Wiring>();
+        Map<Requirement, List<Capability>> candMap = new HashMap<Requirement, List<Capability>>();
+        List<Resource> mandatory = populateScenario4(wirings, candMap);
+        ResolveContextImpl rci = new ResolveContextImpl(wirings, candMap, mandatory, Collections.<Resource> emptyList());
+
+        try
+        {
+            resolver.resolve(rci);
+            fail("Should have thrown a resolution exception as bundle A in scenario 4 cannot be resolved due to constraint violations.");
+        }
+        catch (ResolutionException re)
+        {
+            // good
+        }
+    }
+
+    @Test
+    public void testScenario5() throws Exception
+    {
+        Resolver resolver = new ResolverImpl(new Logger(Logger.LOG_DEBUG));
+
+        Map<Resource, Wiring> wirings = new HashMap<Resource, Wiring>();
+        Map<Requirement, List<Capability>> candMap = new HashMap<Requirement, List<Capability>>();
+        List<Resource> mandatory = populateScenario5(wirings, candMap);
+        ResolveContextImpl rci = new ResolveContextImpl(wirings, candMap, mandatory, Collections.<Resource> emptyList());
+
+        try
+        {
+            resolver.resolve(rci);
+            fail("Should have thrown a resolution exception as bundle A in scenario 5 cannot be resolved due to constraint violations.");
+        }
+        catch (ResolutionException re)
+        {
+            // good
+        }
     }
 
     private static Resource findResource(String identity, Collection<Resource> resources)
@@ -315,4 +363,70 @@ public class ResolverTest
         resources.add(e);
         return resources;
     }
+
+    private static List<Resource> populateScenario4(Map<Resource, Wiring> wirings, Map<Requirement, List<Capability>> candMap)
+    {
+        ResourceImpl a = new ResourceImpl("A");
+        a.addRequirement(new BundleRequirement(a, "B"));
+        a.addRequirement(new BundleRequirement(a, "C"));
+
+        ResourceImpl b = new ResourceImpl("B");
+        b.addCapability(new BundleCapability(b, "B"));
+        b.addCapability(new PackageCapability(b, "p1"));
+
+        ResourceImpl c = new ResourceImpl("C");
+        c.addRequirement(new BundleRequirement(c, "D"));
+        c.addCapability(new BundleCapability(c, "C"));
+        PackageCapability p2 = new PackageCapability(c, "p2");
+        p2.addDirective(Namespace.CAPABILITY_USES_DIRECTIVE, "p1");
+        c.addCapability(p2);
+
+        ResourceImpl d = new ResourceImpl("D");
+        d.addCapability(new BundleCapability(d, "D"));
+        d.addCapability(new PackageCapability(d, "p1"));
+
+        candMap.put(a.getRequirements(null).get(0), b.getCapabilities(BundleNamespace.BUNDLE_NAMESPACE));
+        candMap.put(a.getRequirements(null).get(1), c.getCapabilities(BundleNamespace.BUNDLE_NAMESPACE));
+        candMap.put(c.getRequirements(null).get(0), d.getCapabilities(BundleNamespace.BUNDLE_NAMESPACE));
+
+        List<Resource> resources = new ArrayList<Resource>();
+        resources.add(a);
+        return resources;
+    }
+
+    private static List<Resource> populateScenario5(Map<Resource, Wiring> wirings, Map<Requirement, List<Capability>> candMap)
+    {
+        ResourceImpl x = new ResourceImpl("X");
+        x.addRequirement(new BundleRequirement(x, "A"));
+
+        ResourceImpl a = new ResourceImpl("A");
+        a.addCapability(new BundleCapability(a, "A"));
+        a.addRequirement(new BundleRequirement(a, "B"));
+        a.addRequirement(new BundleRequirement(a, "C"));
+
+        ResourceImpl b = new ResourceImpl("B");
+        b.addCapability(new BundleCapability(b, "B"));
+        b.addCapability(new PackageCapability(b, "p1"));
+
+        ResourceImpl c = new ResourceImpl("C");
+        c.addRequirement(new BundleRequirement(c, "D"));
+        c.addCapability(new BundleCapability(c, "C"));
+        PackageCapability p2 = new PackageCapability(c, "p2");
+        p2.addDirective(Namespace.CAPABILITY_USES_DIRECTIVE, "p1");
+        c.addCapability(p2);
+
+        ResourceImpl d = new ResourceImpl("D");
+        d.addCapability(new BundleCapability(d, "D"));
+        d.addCapability(new PackageCapability(d, "p1"));
+
+        candMap.put(x.getRequirements(null).get(0), a.getCapabilities(BundleNamespace.BUNDLE_NAMESPACE));
+        candMap.put(a.getRequirements(null).get(0), b.getCapabilities(BundleNamespace.BUNDLE_NAMESPACE));
+        candMap.put(a.getRequirements(null).get(1), c.getCapabilities(BundleNamespace.BUNDLE_NAMESPACE));
+        candMap.put(c.getRequirements(null).get(0), d.getCapabilities(BundleNamespace.BUNDLE_NAMESPACE));
+
+        List<Resource> resources = new ArrayList<Resource>();
+        resources.add(x);
+        return resources;
+    }
+
 }
