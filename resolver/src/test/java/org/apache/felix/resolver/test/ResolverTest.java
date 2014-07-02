@@ -34,6 +34,7 @@ import org.apache.felix.resolver.Logger;
 import org.apache.felix.resolver.ResolverImpl;
 import org.junit.Test;
 import org.osgi.framework.namespace.BundleNamespace;
+import org.osgi.framework.namespace.HostNamespace;
 import org.osgi.framework.namespace.IdentityNamespace;
 import org.osgi.framework.namespace.PackageNamespace;
 import org.osgi.resource.Capability;
@@ -265,14 +266,17 @@ public class ResolverTest
         Map<Resource, List<Wire>> wireMap = resolver.resolve(rci);
 
         int aResources = 0;
-        for (Resource r : wireMap.keySet()) {
-            if ("A".equals(getResourceName(r))) {
+        for (Resource r : wireMap.keySet())
+        {
+            if ("A".equals(getResourceName(r)))
+            {
                 aResources++;
 
                 List<Wire> wires = wireMap.get(r);
                 assertEquals(4, wires.size());
                 List<String> providers = new ArrayList<String>();
-                for (Wire w : wires) {
+                for (Wire w : wires)
+                {
                     providers.add(getResourceName(w.getProvider()));
                 }
                 Collections.sort(providers);
@@ -282,10 +286,79 @@ public class ResolverTest
         assertEquals("Should have found two resolved resources named 'A'", 2, aResources);
     }
 
+    @Test
+    public void testScenario7() throws Exception
+    {
+        Resolver resolver = new ResolverImpl(new Logger(Logger.LOG_DEBUG));
+
+        Map<Resource, Wiring> wirings = new HashMap<Resource, Wiring>();
+        Map<Requirement, List<Capability>> candMap = new HashMap<Requirement, List<Capability>>();
+        List<Resource> mandatory = populateScenario7(wirings, candMap);
+        ResolveContextImpl rci = new ResolveContextImpl(wirings, candMap, mandatory, Collections.<Resource> emptyList());
+
+        Map<Resource, List<Wire>> wireMap = resolver.resolve(rci);
+        assertEquals(4, wireMap.size());
+
+        Resource aRes = findResource("A", wireMap.keySet());
+        List<Wire> aWires = wireMap.get(aRes);
+        assertEquals(0, aWires.size());
+
+        Resource f1Res = findResource("F1", wireMap.keySet());
+        List<Wire> f1Wires = wireMap.get(f1Res);
+        assertEquals(1, f1Wires.size());
+        Wire f1Wire = f1Wires.get(0);
+        assertEquals(f1Res, f1Wire.getRequirer());
+        assertEquals(aRes, f1Wire.getProvider());
+        Requirement req = f1Wire.getRequirement();
+        assertEquals(HostNamespace.HOST_NAMESPACE, req.getNamespace());
+        assertEquals(0, req.getAttributes().size());
+        assertEquals(f1Res, req.getResource());
+        assertEquals(1, req.getDirectives().size());
+        assertEquals("(osgi.wiring.host=A)", req.getDirectives().get("filter"));
+        Capability cap = f1Wire.getCapability();
+        assertEquals(aRes, cap.getResource());
+        assertEquals(HostNamespace.HOST_NAMESPACE, cap.getNamespace());
+        assertEquals(0, cap.getDirectives().size());
+        assertEquals(1, cap.getAttributes().size());
+        assertEquals("A", cap.getAttributes().get(HostNamespace.HOST_NAMESPACE));
+
+        Resource f2Res = findResource("F2", wireMap.keySet());
+        List<Wire> f2Wires = wireMap.get(f2Res);
+        assertEquals(1, f2Wires.size());
+        Wire f2Wire = f2Wires.get(0);
+        assertEquals(f2Res, f2Wire.getRequirer());
+        assertEquals(aRes, f2Wire.getProvider());
+        Requirement req2 = f2Wire.getRequirement();
+        assertEquals(HostNamespace.HOST_NAMESPACE, req2.getNamespace());
+        assertEquals(0, req2.getAttributes().size());
+        assertEquals(f2Res, req2.getResource());
+        assertEquals(1, req2.getDirectives().size());
+        assertEquals("(osgi.wiring.host=A)", req2.getDirectives().get("filter"));
+        Capability cap2 = f1Wire.getCapability();
+        assertEquals(aRes, cap2.getResource());
+        assertEquals(HostNamespace.HOST_NAMESPACE, cap2.getNamespace());
+        assertEquals(0, cap2.getDirectives().size());
+        assertEquals(1, cap2.getAttributes().size());
+        assertEquals("A", cap2.getAttributes().get(HostNamespace.HOST_NAMESPACE));
+
+        Resource bRes = findResource("B", wireMap.keySet());
+        List<Wire> bWires = wireMap.get(bRes);
+        assertEquals(1, bWires.size());
+        Wire bWire = bWires.get(0);
+        assertEquals(bRes, bWire.getRequirer());
+        assertEquals(f2Res, bWire.getProvider());
+        Requirement bReq = bWire.getRequirement();
+        assertEquals(IdentityNamespace.IDENTITY_NAMESPACE, bReq.getNamespace());
+        assertEquals(0, bReq.getAttributes().size());
+        assertEquals(bRes, bReq.getResource());
+        assertEquals(1, bReq.getDirectives().size());
+        assertEquals("(osgi.identity=F2)", bReq.getDirectives().get("filter"));
+    }
+
     private static String getResourceName(Resource r)
     {
-        return r.getCapabilities(IdentityNamespace.IDENTITY_NAMESPACE).get(0).
-                getAttributes().get(IdentityNamespace.IDENTITY_NAMESPACE).toString();
+        return r.getCapabilities(IdentityNamespace.IDENTITY_NAMESPACE).get(0).getAttributes()
+                .get(IdentityNamespace.IDENTITY_NAMESPACE).toString();
     }
 
     private static Resource findResource(String identity, Collection<Resource> resources)
@@ -530,6 +603,39 @@ public class ResolverTest
         List<Resource> resources = new ArrayList<Resource>();
         resources.add(a1);
         resources.add(a2);
+        return resources;
+    }
+
+    private static List<Resource> populateScenario7(Map<Resource, Wiring> wirings, Map<Requirement, List<Capability>> candMap)
+    {
+        ResourceImpl a1 = new ResourceImpl("A");
+        GenericCapability a1_hostCap = new GenericCapability(a1, HostNamespace.HOST_NAMESPACE);
+        a1_hostCap.addAttribute(HostNamespace.HOST_NAMESPACE, "A");
+        a1.addCapability(a1_hostCap);
+
+        ResourceImpl f1 = new ResourceImpl("F1", IdentityNamespace.TYPE_FRAGMENT);
+        GenericRequirement f1_hostReq = new GenericRequirement(f1, HostNamespace.HOST_NAMESPACE);
+        f1_hostReq.addDirective(Namespace.REQUIREMENT_FILTER_DIRECTIVE, "(" + HostNamespace.HOST_NAMESPACE + "=A)");
+        f1.addRequirement(f1_hostReq);
+
+        ResourceImpl f2 = new ResourceImpl("F2", IdentityNamespace.TYPE_FRAGMENT);
+        GenericRequirement f2_hostReq = new GenericRequirement(f2, HostNamespace.HOST_NAMESPACE);
+        f2_hostReq.addDirective(Namespace.REQUIREMENT_FILTER_DIRECTIVE, "(" + HostNamespace.HOST_NAMESPACE + "=A)");
+        f2.addRequirement(f2_hostReq);
+
+        ResourceImpl b1 = new ResourceImpl("B");
+        GenericRequirement b1_identityReq = new GenericRequirement(b1, IdentityNamespace.IDENTITY_NAMESPACE);
+        b1_identityReq.addDirective(Namespace.REQUIREMENT_FILTER_DIRECTIVE, "(" + IdentityNamespace.IDENTITY_NAMESPACE + "=F2)");
+        b1.addRequirement(b1_identityReq);
+
+        candMap.put(f1.getRequirements(null).get(0), a1.getCapabilities(HostNamespace.HOST_NAMESPACE));
+        candMap.put(f2.getRequirements(null).get(0), a1.getCapabilities(HostNamespace.HOST_NAMESPACE));
+        candMap.put(b1.getRequirements(null).get(0), f2.getCapabilities(IdentityNamespace.IDENTITY_NAMESPACE));
+        List<Resource> resources = new ArrayList<Resource>();
+        resources.add(a1);
+        resources.add(f1);
+        resources.add(f2);
+        resources.add(b1);
         return resources;
     }
 }
