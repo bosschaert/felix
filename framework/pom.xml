@@ -66,7 +66,7 @@
             <Bundle-Description>OSGi R5 framework implementation.</Bundle-Description>
             <Bundle-Vendor>The Apache Software Foundation</Bundle-Vendor>
             <Export-Package>org.osgi.framework.*;-split-package:=merge-first,org.osgi.resource,org.osgi.service.*,org.osgi.util.tracker</Export-Package>
-            <Private-Package>org.apache.felix.framework.*</Private-Package>
+            <Private-Package>org.apache.felix.framework.*, org.apache.felix.resolver.*</Private-Package>
             <Import-Package>!*</Import-Package>
           </instructions>
         </configuration>
