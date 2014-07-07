@@ -18,9 +18,12 @@
  */
 package org.apache.felix.framework.util;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URL;
-
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,11 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
-import org.apache.felix.framework.Logger;
-import org.apache.felix.framework.capabilityset.CapabilitySet;
-import org.apache.felix.framework.wiring.BundleCapabilityImpl;
-import org.apache.felix.framework.wiring.BundleRequirementImpl;
 
+import org.apache.felix.framework.Logger;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.Constants;
 import org.osgi.framework.ServiceReference;
@@ -42,6 +42,7 @@ import org.osgi.framework.wiring.BundleRequirement;
 import org.osgi.framework.wiring.BundleRevision;
 import org.osgi.framework.wiring.BundleWire;
 import org.osgi.framework.wiring.BundleWiring;
+import org.osgi.resource.Resource;
 
 public class Util
 {
@@ -630,7 +631,7 @@ public class Util
                 {
                     if (entry.getKey().equalsIgnoreCase(Constants.SINGLETON_DIRECTIVE))
                     {
-                        return Boolean.valueOf((String) entry.getValue());
+                        return Boolean.valueOf(entry.getValue());
                     }
                 }
                 // Can only have one bundle capability, so break.
@@ -650,6 +651,14 @@ public class Util
     public static boolean isFragment(BundleRevision revision)
     {
         return ((revision.getTypes() & BundleRevision.TYPE_FRAGMENT) > 0);
+    }
+
+    public static boolean isFragment(Resource resource)
+    {
+        if (resource instanceof BundleRevision)
+            return isFragment((BundleRevision) resource);
+        else
+            return false;
     }
 
     public static List<BundleRevision> getFragments(BundleWiring wiring)

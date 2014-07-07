@@ -32,7 +32,7 @@ public class BundleWireImpl implements BundleWire
     private final BundleCapability m_cap;
 
     public BundleWireImpl(BundleRevision requirer, BundleRequirement req,
-        BundleRevision provider, BundleCapability cap)
+            BundleRevision provider, BundleCapability cap)
     {
         m_requirer = requirer;
         m_req = req;

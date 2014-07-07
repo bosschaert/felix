@@ -31,17 +31,14 @@ import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.StringTokenizer;
+
 import org.apache.felix.framework.capabilityset.CapabilitySet;
 import org.apache.felix.framework.capabilityset.SimpleFilter;
 import org.apache.felix.framework.resolver.CandidateComparator;
 import org.apache.felix.framework.resolver.ResolveException;
-import org.apache.felix.framework.resolver.Resolver;
-import org.apache.felix.framework.resolver.ResolverImpl;
-import org.apache.felix.framework.resolver.ResolverWire;
 import org.apache.felix.framework.util.ShrinkableCollection;
 import org.apache.felix.framework.util.Util;
 import org.apache.felix.framework.util.manifestparser.R4Library;
-import org.apache.felix.framework.wiring.BundleCapabilityImpl;
 import org.apache.felix.framework.wiring.BundleRequirementImpl;
 import org.apache.felix.framework.wiring.BundleWireImpl;
 import org.osgi.framework.Bundle;
@@ -59,6 +56,10 @@ import org.osgi.framework.wiring.BundleRequirement;
 import org.osgi.framework.wiring.BundleRevision;
 import org.osgi.framework.wiring.BundleWire;
 import org.osgi.framework.wiring.BundleWiring;
+import org.osgi.resource.Resource;
+import org.osgi.resource.Wire;
+import org.osgi.service.resolver.ResolutionException;
+import org.osgi.service.resolver.Resolver;
 
 class StatefulResolver
 {
@@ -86,7 +87,8 @@ class StatefulResolver
     {
         m_felix = felix;
         m_logger = m_felix.getLogger();
-        m_resolver = new ResolverImpl(m_logger);
+        // m_resolver = new ResolverImpl(m_logger);
+        m_resolver = new org.apache.felix.resolver.ResolverImpl(m_logger);
 
         m_revisions = new HashSet<BundleRevision>();
         m_fragments = new HashSet<BundleRevision>();
@@ -334,7 +336,7 @@ class StatefulResolver
     void resolve(
         Set<BundleRevision> mandatory,
         Set<BundleRevision> optional)
-        throws ResolveException, BundleException
+        throws ResolutionException, BundleException
     {
         // Acquire global lock.
         boolean locked = m_felix.acquireGlobalLock();
@@ -353,7 +355,7 @@ class StatefulResolver
         }
         m_isResolving = true;
 
-        Map<BundleRevision, List<ResolverWire>> wireMap = null;
+        Map<Resource, List<Wire>> wireMap = null;
         try
         {
             // Make our own copy of revisions.
@@ -398,20 +400,22 @@ class StatefulResolver
 
             // Catch any resolve exception to rethrow later because
             // we may need to call end() on resolver hooks.
-            ResolveException rethrow = null;
+            ResolutionException rethrow = null;
             try
             {
                 // Resolve the revision.
                 wireMap = m_resolver.resolve(
+                        null // TODO
+                        /*
                     new ResolveContextImpl(
                         this,
                         getWirings(),
                         record,
                         mandatory,
                         optional,
-                        getFragments()));
+                        getFragments()) */);
             }
-            catch (ResolveException ex)
+            catch (ResolutionException ex)
             {
                 rethrow = ex;
             }
@@ -440,7 +444,7 @@ class StatefulResolver
     }
 
     BundleRevision resolve(BundleRevision revision, String pkgName)
-        throws ResolveException, BundleException
+        throws ResolutionException, BundleException
     {
         BundleRevision provider = null;
 
@@ -468,7 +472,7 @@ class StatefulResolver
             }
             m_isResolving = true;
 
-            Map<BundleRevision, List<ResolverWire>> wireMap = null;
+            Map<Resource, List<Wire>> wireMap = null;
             try
             {
                 // Double check to make sure that someone hasn't beaten us to
@@ -489,10 +493,12 @@ class StatefulResolver
 
                     // Catch any resolve exception to rethrow later because
                     // we may need to call end() on resolver hooks.
-                    ResolveException rethrow = null;
+                    ResolutionException rethrow = null;
                     try
                     {
                         wireMap = m_resolver.resolve(
+                                null // TODO
+                            /*
                             new ResolveContextImpl(
                                 this,
                                 getWirings(),
@@ -500,9 +506,9 @@ class StatefulResolver
                                 Collections.EMPTY_LIST,
                                 Collections.EMPTY_LIST,
                                 getFragments()),
-                            revision, pkgName);
+                            revision, pkgName */);
                     }
-                    catch (ResolveException ex)
+                    catch (ResolutionException ex)
                     {
                         rethrow = ex;
                     }
@@ -518,8 +524,8 @@ class StatefulResolver
 
                     if ((wireMap != null) && wireMap.containsKey(revision))
                     {
-                        List<ResolverWire> dynamicWires = wireMap.remove(revision);
-                        ResolverWire dynamicWire = dynamicWires.get(0);
+                        List<Wire> dynamicWires = wireMap.remove(revision);
+                        Wire dynamicWire = dynamicWires.get(0);
 
                         // Mark all revisions as resolved.
                         markResolvedRevisions(wireMap);
@@ -527,22 +533,35 @@ class StatefulResolver
                         // Dynamically add new wire to importing revision.
                         if (dynamicWire != null)
                         {
-                            BundleWire bw = new BundleWireImpl(
-                                dynamicWire.getRequirer(),
-                                dynamicWire.getRequirement(),
-                                dynamicWire.getProvider(),
-                                dynamicWire.getCapability());
+                            // TODO is a rw already a BundleWire?
+                            // TODO can we optimize this?
+                            if (dynamicWire.getRequirer() instanceof BundleRevision &&
+                                dynamicWire.getRequirement() instanceof BundleRequirement &&
+                                dynamicWire.getProvider() instanceof BundleRevision &&
+                                dynamicWire.getCapability() instanceof BundleCapability)
+                            {
+                                BundleRevision dwRequirer = (BundleRevision) dynamicWire.getRequirer();
+                                BundleRequirement dwRequirement = (BundleRequirement) dynamicWire.getRequirement();
+                                BundleRevision dwProvider = (BundleRevision) dynamicWire.getProvider();
+                                BundleCapability dwCapability = (BundleCapability) dynamicWire.getCapability();
 
-                            m_felix.getDependencies().addDependent(bw);
+                                BundleWire bw = new BundleWireImpl(
+                                    dwRequirer,
+                                    dwRequirement,
+                                    dwProvider,
+                                    dwCapability);
 
-                            ((BundleWiringImpl) revision.getWiring()).addDynamicWire(bw);
+                                m_felix.getDependencies().addDependent(bw);
 
-                            m_felix.getLogger().log(
-                                Logger.LOG_DEBUG,
-                                "DYNAMIC WIRE: " + dynamicWire);
+                                ((BundleWiringImpl) revision.getWiring()).addDynamicWire(bw);
 
-                            provider = ((BundleWiringImpl) revision.getWiring())
-                                .getImportedPackageSource(pkgName);
+                                m_felix.getLogger().log(
+                                    Logger.LOG_DEBUG,
+                                    "DYNAMIC WIRE: " + dynamicWire);
+
+                                provider = ((BundleWiringImpl) revision.getWiring())
+                                    .getImportedPackageSource(pkgName);
+                            }
                         }
                     }
                 }
@@ -566,7 +585,7 @@ class StatefulResolver
         throws BundleException
     {
         // This map maps the hook factory service to the actual hook objects. It
-        // needs to be a map that preserves insertion order to ensure that we call 
+        // needs to be a map that preserves insertion order to ensure that we call
         // hooks in the correct order.
         // The hooks are added in the order that m_felix.getHooks() returns them which
         // is also the order in which they should be called.
@@ -595,7 +614,7 @@ class StatefulResolver
             triggers = Collections.unmodifiableSet(triggers);
 
             BundleException rethrow = null;
-            
+
             // Create resolver hook objects by calling begin() on factory.
             for (ServiceReference<ResolverHookFactory> ref : hookRefs)
             {
@@ -621,7 +640,7 @@ class StatefulResolver
                         ex);
                     // Resolver hook spec: if there is an exception during the resolve operation; abort.
                     // So we break here to make sure that no further resolver hooks are created.
-                    break; 
+                    break;
                 }
             }
 
@@ -663,7 +682,7 @@ class StatefulResolver
                         ex);
                     // Resolver hook spec: if there is an exception during the resolve operation; abort.
                     // So we break here to make sure that no further resolver operations are executed.
-                    break; 
+                    break;
                 }
             }
 
@@ -824,7 +843,7 @@ class StatefulResolver
             {
                 BundleCapability cap = itCand.next();
                 if (CapabilitySet.matches(
-                    (BundleCapabilityImpl) cap,
+                    cap,
                     ((BundleRequirementImpl) dynamics.get(dynIdx)).getFilter()))
                 {
                     dynReq = (BundleRequirementImpl) dynamics.get(dynIdx);
@@ -841,7 +860,7 @@ class StatefulResolver
             {
                 BundleCapability cap = itCand.next();
                 if (!CapabilitySet.matches(
-                    (BundleCapabilityImpl) cap, dynReq.getFilter()))
+                    cap, dynReq.getFilter()))
                 {
                     itCand.remove();
                 }
@@ -855,7 +874,7 @@ class StatefulResolver
         return !candidates.isEmpty();
     }
 
-    private void markResolvedRevisions(Map<BundleRevision, List<ResolverWire>> wireMap)
+    private void markResolvedRevisions(Map<Resource, List<Wire>> wireMap)
         throws ResolveException
     {
         boolean debugLog = m_felix.getLogger().getLogLevel() >= Logger.LOG_DEBUG;
@@ -871,26 +890,28 @@ class StatefulResolver
         {
             // First pass: Loop through the wire map to find the host wires
             // for any fragments and map a host to all of its fragments.
-            Map<BundleRevision, List<BundleRevision>> hosts =
-                new HashMap<BundleRevision, List<BundleRevision>>();
-            for (Entry<BundleRevision, List<ResolverWire>> entry : wireMap.entrySet())
+            Map<Resource, List<BundleRevision>> hosts =
+                new HashMap<Resource, List<BundleRevision>>();
+            for (Entry<Resource, List<Wire>> entry : wireMap.entrySet())
             {
-                BundleRevision revision = entry.getKey();
-                List<ResolverWire> wires = entry.getValue();
+                Resource revision = entry.getKey();
+                List<Wire> wires = entry.getValue();
 
                 if (Util.isFragment(revision))
                 {
-                    for (Iterator<ResolverWire> itWires = wires.iterator();
+                    for (Iterator<Wire> itWires = wires.iterator();
                         itWires.hasNext(); )
                     {
-                        ResolverWire w = itWires.next();
+                        Wire w = itWires.next();
                         List<BundleRevision> fragments = hosts.get(w.getProvider());
                         if (fragments == null)
                         {
                             fragments = new ArrayList<BundleRevision>();
                             hosts.put(w.getProvider(), fragments);
                         }
-                        fragments.add(w.getRequirer());
+
+                        if (w.getRequirer() instanceof BundleRevision)
+                            fragments.add((BundleRevision) w.getRequirer());
                     }
                 }
             }
@@ -904,10 +925,14 @@ class StatefulResolver
             // all wirings.
             Map<BundleRevision, BundleWiringImpl> wirings =
                 new HashMap<BundleRevision, BundleWiringImpl>(wireMap.size());
-            for (Entry<BundleRevision, List<ResolverWire>> entry : wireMap.entrySet())
+            for (Entry<Resource, List<Wire>> entry : wireMap.entrySet())
             {
-                BundleRevision revision = entry.getKey();
-                List<ResolverWire> resolverWires = entry.getValue();
+                Resource resource = entry.getKey();
+                if (!(resource instanceof BundleRevision))
+                    continue;
+
+                BundleRevision revision = (BundleRevision) resource;
+                List<Wire> resolverWires = entry.getValue();
 
                 List<BundleWire> bundleWires =
                     new ArrayList<BundleWire>(resolverWires.size());
@@ -929,13 +954,28 @@ class StatefulResolver
                     new HashMap<String, BundleRevision>();
                 Map<String, List<BundleRevision>> requiredPkgs =
                     new HashMap<String, List<BundleRevision>>();
-                for (ResolverWire rw : resolverWires)
+                for (Wire rw : resolverWires)
                 {
+                    // TODO is a rw already a BundleWire?
+                    // TODO can we optimize this?
+                    if (!(rw.getRequirer() instanceof BundleRevision))
+                        continue;
+                    BundleRevision requirer = (BundleRevision) rw.getRequirer();
+                    if (!(rw.getRequirement() instanceof BundleRequirement))
+                        continue;
+                    BundleRequirement requirement = (BundleRequirement) rw.getRequirement();
+                    if (!(rw.getProvider() instanceof BundleRevision))
+                        continue;
+                    BundleRevision provider = (BundleRevision) rw.getProvider();
+                    if (!(rw.getCapability() instanceof BundleCapability))
+                        continue;
+                    BundleCapability capability = (BundleCapability) rw.getCapability();
+
                     BundleWire bw = new BundleWireImpl(
-                        rw.getRequirer(),
-                        rw.getRequirement(),
-                        rw.getProvider(),
-                        rw.getCapability());
+                        requirer,
+                        requirement,
+                        provider,
+                        capability);
                     bundleWires.add(bw);
 
                     if (Util.isFragment(revision))
@@ -954,19 +994,19 @@ class StatefulResolver
                             m_felix.getLogger().log(Logger.LOG_DEBUG, "WIRE: " + rw.toString());
                         }
 
-                        if (rw.getCapability().getNamespace()
+                        if (capability.getNamespace()
                             .equals(BundleRevision.PACKAGE_NAMESPACE))
                         {
                             importedPkgs.put(
-                                (String) rw.getCapability().getAttributes()
+                                (String) capability.getAttributes()
                                     .get(BundleRevision.PACKAGE_NAMESPACE),
-                                rw.getProvider());
+                                provider);
                         }
-                        else if (rw.getCapability().getNamespace()
+                        else if (capability.getNamespace()
                             .equals(BundleRevision.BUNDLE_NAMESPACE))
                         {
                             Set<String> pkgs = calculateExportedAndReexportedPackages(
-                                    rw.getProvider(),
+                                    provider,
                                     wireMap,
                                     new HashSet<String>(),
                                     new HashSet<BundleRevision>());
@@ -978,7 +1018,7 @@ class StatefulResolver
                                     revs = new ArrayList<BundleRevision>();
                                     requiredPkgs.put(pkg, revs);
                                 }
-                                revs.add(rw.getProvider());
+                                revs.add(provider);
                             }
                         }
                     }
@@ -1103,17 +1143,21 @@ class StatefulResolver
         }
     }
 
-    private void fireResolvedEvents(Map<BundleRevision, List<ResolverWire>> wireMap)
+    private void fireResolvedEvents(Map<Resource, List<Wire>> wireMap)
     {
         if (wireMap != null)
         {
-            Iterator<Entry<BundleRevision, List<ResolverWire>>> iter =
+            Iterator<Entry<Resource, List<Wire>>> iter =
                 wireMap.entrySet().iterator();
             // Iterate over the map to fire necessary RESOLVED events.
             while (iter.hasNext())
             {
-                Entry<BundleRevision, List<ResolverWire>> entry = iter.next();
-                BundleRevision revision = entry.getKey();
+                Entry<Resource, List<Wire>> entry = iter.next();
+                Resource resource = entry.getKey();
+                if (!(resource instanceof BundleRevision))
+                    continue;
+
+                BundleRevision revision = (BundleRevision) resource;
 
                 // Fire RESOLVED events for all fragments.
                 List<BundleRevision> fragments =
@@ -1130,7 +1174,7 @@ class StatefulResolver
 
     private static Set<String> calculateExportedAndReexportedPackages(
         BundleRevision br,
-        Map<BundleRevision, List<ResolverWire>> wireMap,
+        Map<Resource, List<Wire>> wireMap,
         Set<String> pkgs,
         Set<BundleRevision> cycles)
     {
@@ -1152,7 +1196,7 @@ class StatefulResolver
             // visibility, since we need to include those packages too.
             if (br.getWiring() == null)
             {
-                for (ResolverWire rw : wireMap.get(br))
+                for (Wire rw : wireMap.get(br))
                 {
                     if (rw.getCapability().getNamespace().equals(
                         BundleRevision.BUNDLE_NAMESPACE))
@@ -1162,7 +1206,8 @@ class StatefulResolver
                         if ((dir != null) && (dir.equals(Constants.VISIBILITY_REEXPORT)))
                         {
                             calculateExportedAndReexportedPackages(
-                                rw.getProvider(),
+                                // TODO need to fix the cast
+                                (BundleRevision) rw.getProvider(),
                                 wireMap,
                                 pkgs,
                                 cycles);
@@ -1570,7 +1615,7 @@ class StatefulResolver
     {
         final Map<ServiceReference<ResolverHookFactory>, ResolverHook> m_resolveHookMap;
         final Collection<BundleRevision> m_brWhitelist;
- 
+
         /** The map passed in must be of an ordered type, so that the iteration order over the values
          * is predictable.
          */
@@ -1580,8 +1625,8 @@ class StatefulResolver
             m_resolveHookMap = resolveHookMap;
             m_brWhitelist = brWhiteList;
         }
-        
-        Collection<BundleRevision> getBundleRevisionWhitelist() 
+
+        Collection<BundleRevision> getBundleRevisionWhitelist()
         {
             return m_brWhitelist;
         }
