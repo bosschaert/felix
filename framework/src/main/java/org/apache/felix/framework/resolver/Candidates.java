@@ -29,7 +29,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 
-import org.apache.felix.framework.ResolveContextImpl;
 import org.apache.felix.framework.util.FelixConstants;
 import org.apache.felix.framework.util.Util;
 import org.apache.felix.framework.wiring.BundleCapabilityImpl;
@@ -42,6 +41,7 @@ import org.osgi.framework.wiring.BundleRevision;
 import org.osgi.framework.wiring.BundleWire;
 import org.osgi.framework.wiring.BundleWiring;
 
+// TODO remove this class
 class Candidates
 {
     public static final int MANDATORY = 0;
@@ -231,7 +231,7 @@ class Candidates
         if ((remainingReqs == null) && (localCandidateMap == null))
         {
             // Verify that any native libraries match the current platform.
-            ((ResolveContextImpl) rc).checkNativeLibraries(revision);
+            // TODO removed because this class can go ((ResolveContextImpl) rc).checkNativeLibraries(revision);
 
             // Record cycle count.
             cycleCount = new Integer(0);
@@ -356,7 +356,7 @@ class Candidates
         // some other checks and prepopulate the result cache with
         // the work we've done so far.
         // Verify that any native libraries match the current platform.
-        ((ResolveContextImpl) rc).checkNativeLibraries(revision);
+        // TODO removed because this class can go ((ResolveContextImpl) rc).checkNativeLibraries(revision);
         // Record cycle count, but start at -1 since it will
         // be incremented again in populate().
         Integer cycleCount = new Integer(-1);

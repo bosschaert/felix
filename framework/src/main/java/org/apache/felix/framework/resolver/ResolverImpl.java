@@ -28,10 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.SortedSet;
+
 import org.apache.felix.framework.BundleWiringImpl;
 import org.apache.felix.framework.Logger;
-import org.apache.felix.framework.ResolveContextImpl;
 import org.apache.felix.framework.capabilityset.CapabilitySet;
 import org.apache.felix.framework.util.FelixConstants;
 import org.apache.felix.framework.util.Util;
@@ -43,6 +42,7 @@ import org.osgi.framework.wiring.BundleRequirement;
 import org.osgi.framework.wiring.BundleRevision;
 import org.osgi.framework.wiring.BundleWire;
 
+// TODO delete this class
 public class ResolverImpl implements Resolver
 {
     private final Logger m_logger;
@@ -68,8 +68,9 @@ public class ResolverImpl implements Resolver
 
         Collection<BundleRevision> mandatoryRevisions = rc.getMandatoryRevisions();
         Collection<BundleRevision> optionalRevisions = rc.getOptionalRevisions();
-        Collection<BundleRevision> ondemandFragments = (rc instanceof ResolveContextImpl)
-            ? ((ResolveContextImpl) rc).getOndemandRevisions() : Collections.EMPTY_LIST;
+        Collection<BundleRevision> ondemandFragments = null;
+        //(rc instanceof ResolveContextImpl)
+        //    ? ((ResolveContextImpl) rc).getOndemandRevisions() : Collections.EMPTY_LIST;
         boolean retry;
         do
         {
@@ -284,8 +285,10 @@ public class ResolverImpl implements Resolver
             getDynamicImportCandidates(rc, revision, pkgName);
         if (allCandidates != null)
         {
-            Collection<BundleRevision> ondemandFragments = (rc instanceof ResolveContextImpl)
-                ? ((ResolveContextImpl) rc).getOndemandRevisions() : Collections.EMPTY_LIST;
+            Collection<BundleRevision> ondemandFragments = null;
+// This class will be removed anyway.
+//                    (rc instanceof ResolveContextImpl)
+//                ? ((ResolveContextImpl) rc).getOndemandRevisions() : Collections.EMPTY_LIST;
 
             Map<BundleRevision, List<ResolverWire>> wireMap =
                 new HashMap<BundleRevision, List<ResolverWire>>();
@@ -457,7 +460,7 @@ public class ResolverImpl implements Resolver
             {
                 BundleCapability cap = itCand.next();
                 if (CapabilitySet.matches(
-                    (BundleCapabilityImpl) cap,
+                    cap,
                     ((BundleRequirementImpl) dynamics.get(dynIdx)).getFilter()))
                 {
                     dynReq = (BundleRequirementImpl) dynamics.get(dynIdx);
@@ -474,7 +477,7 @@ public class ResolverImpl implements Resolver
             {
                 BundleCapability cap = itCand.next();
                 if (!CapabilitySet.matches(
-                    (BundleCapabilityImpl) cap, dynReq.getFilter()))
+                    cap, dynReq.getFilter()))
                 {
                     itCand.remove();
                 }
@@ -1476,7 +1479,7 @@ public class ResolverImpl implements Resolver
         if ((unwrappedRevision.getWiring() == null)
             && !wireMap.containsKey(unwrappedRevision))
         {
-            wireMap.put(unwrappedRevision, (List<ResolverWire>) Collections.EMPTY_LIST);
+            wireMap.put(unwrappedRevision, Collections.EMPTY_LIST);
 
             List<ResolverWire> packageWires = new ArrayList<ResolverWire>();
             List<ResolverWire> bundleWires = new ArrayList<ResolverWire>();
@@ -1554,7 +1557,7 @@ public class ResolverImpl implements Resolver
         BundleRevision revision, String pkgName, Map<BundleRevision, Packages> revisionPkgMap,
         Map<BundleRevision, List<ResolverWire>> wireMap, Candidates allCandidates)
     {
-        wireMap.put(revision, (List<ResolverWire>) Collections.EMPTY_LIST);
+        wireMap.put(revision, Collections.EMPTY_LIST);
 
         List<ResolverWire> packageWires = new ArrayList<ResolverWire>();
 

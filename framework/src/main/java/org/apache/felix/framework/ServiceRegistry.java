@@ -18,7 +18,17 @@
  */
 package org.apache.felix.framework;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Dictionary;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
+import java.util.WeakHashMap;
 
 import org.apache.felix.framework.capabilityset.CapabilitySet;
 import org.apache.felix.framework.capabilityset.SimpleFilter;
@@ -31,7 +41,7 @@ import org.osgi.framework.ServiceException;
 import org.osgi.framework.ServiceFactory;
 import org.osgi.framework.ServiceReference;
 import org.osgi.framework.ServiceRegistration;
-import org.osgi.framework.wiring.BundleCapability;
+import org.osgi.resource.Capability;
 
 public class ServiceRegistry
 {
@@ -238,7 +248,7 @@ public class ServiceRegistry
         }
         // else just use the specified filter.
 
-        Set<BundleCapability> matches = m_regCapSet.match(filter, false);
+        Set<Capability> matches = m_regCapSet.match(filter, false);
 
         return new ArrayList(matches);
     }
@@ -801,7 +811,7 @@ public class ServiceRegistry
     private static <S> SortedSet<ServiceReference<S>> asTypedSortedSet(
         SortedSet<ServiceReference<?>> ss)
     {
-        return (SortedSet<ServiceReference<S>>) (SortedSet) ss;
+        return (SortedSet) ss;
     }
 
     private static class UsageCount

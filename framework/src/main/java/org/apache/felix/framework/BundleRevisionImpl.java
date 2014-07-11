@@ -202,7 +202,7 @@ public class BundleRevisionImpl implements BundleRevision, Resource
 
     static List<Capability> asCapabilityList(List reqs)
     {
-        return (List<Capability>) reqs;
+        return reqs;
     }
 
     public List<BundleCapability> getDeclaredCapabilities(String namespace)
@@ -229,7 +229,7 @@ public class BundleRevisionImpl implements BundleRevision, Resource
 
     static List<Requirement> asRequirementList(List reqs)
     {
-        return (List<Requirement>) reqs;
+        return reqs;
     }
 
     public List<BundleRequirement> getDeclaredRequirements(String namespace)
@@ -674,6 +674,6 @@ public class BundleRevisionImpl implements BundleRevision, Resource
     @Override
     public String toString()
     {
-        return m_id;
+        return m_bundle.toString() + "(Rev " + m_id + ")";
     }
 }

@@ -2741,8 +2741,9 @@ public class BundleWiringImpl implements BundleWiring
                 provider = null;
             }
 
+            // TODO ensure that the BundleRevision returns a nice
             String exporter = (exporters.isEmpty())
-                ? null : exporters.iterator().next().getRevision().getBundle().toString();
+                ? null : exporters.iterator().next().toString();
 
             StringBuffer sb = new StringBuffer("*** Class '");
             sb.append(name);
@@ -2787,7 +2788,7 @@ public class BundleWiringImpl implements BundleWiring
                 // Ignore
             }
 
-            String exporter = exports.iterator().next().getRevision().getBundle().toString();
+            String exporter = exports.iterator().next().toString();
 
             StringBuffer sb = new StringBuffer("*** Class '");
             sb.append(name);

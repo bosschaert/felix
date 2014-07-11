@@ -56,8 +56,11 @@ import org.osgi.framework.wiring.BundleRequirement;
 import org.osgi.framework.wiring.BundleRevision;
 import org.osgi.framework.wiring.BundleWire;
 import org.osgi.framework.wiring.BundleWiring;
+import org.osgi.resource.Capability;
+import org.osgi.resource.Requirement;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wire;
+import org.osgi.resource.Wiring;
 import org.osgi.service.resolver.ResolutionException;
 import org.osgi.service.resolver.Resolver;
 
@@ -166,7 +169,7 @@ class StatefulResolver
         }
     }
 
-    boolean isEffective(BundleRequirement req)
+    boolean isEffective(Requirement req)
     {
         String effective = req.getDirectives().get(Constants.EFFECTIVE_DIRECTIVE);
         return ((effective == null) || effective.equals(Constants.EFFECTIVE_RESOLVE));
@@ -210,24 +213,29 @@ class StatefulResolver
             }
 
             // Find the matching candidates.
-            Set<BundleCapability> matches = capSet.match(sf, obeyMandatory);
+            Set<Capability> matches = capSet.match(sf, obeyMandatory);
             // Filter matching candidates.
-            for (BundleCapability cap : matches)
+            for (Capability cap : matches)
             {
+                if (!(cap instanceof BundleCapability))
+                    continue;
+
+                BundleCapability bcap = (BundleCapability) cap;
+
                 // Filter according to security.
-                if (filteredBySecurity(req, cap))
+                if (filteredBySecurity(req, bcap))
                 {
                     continue;
                 }
                 // Filter already resolved hosts, since we don't support
                 // dynamic attachment of fragments.
                 if (req.getNamespace().equals(BundleRevision.HOST_NAMESPACE)
-                    && (cap.getRevision().getWiring() != null))
+                    && (bcap.getRevision().getWiring() != null))
                 {
                     continue;
                 }
 
-                result.add(cap);
+                result.add(bcap);
             }
         }
 
@@ -405,7 +413,14 @@ class StatefulResolver
             {
                 // Resolve the revision.
                 wireMap = m_resolver.resolve(
-                        null // TODO
+                    new ResolveContextImpl(
+                            this,
+                            getWirings(),
+                            record,
+                            mandatory,
+                            optional,
+                            getFragments()));
+//                        null // TODO
                         /*
                     new ResolveContextImpl(
                         this,
@@ -413,7 +428,7 @@ class StatefulResolver
                         record,
                         mandatory,
                         optional,
-                        getFragments()) */);
+                        getFragments()) */
             }
             catch (ResolutionException ex)
             {
@@ -841,7 +856,7 @@ class StatefulResolver
             for (Iterator<BundleCapability> itCand = candidates.iterator();
                 (dynReq == null) && itCand.hasNext(); )
             {
-                BundleCapability cap = itCand.next();
+                Capability cap = itCand.next();
                 if (CapabilitySet.matches(
                     cap,
                     ((BundleRequirementImpl) dynamics.get(dynIdx)).getFilter()))
@@ -858,7 +873,7 @@ class StatefulResolver
             for (Iterator<BundleCapability> itCand = candidates.iterator();
                 itCand.hasNext(); )
             {
-                BundleCapability cap = itCand.next();
+                Capability cap = itCand.next();
                 if (!CapabilitySet.matches(
                     cap, dynReq.getFilter()))
                 {
@@ -1564,9 +1579,9 @@ class StatefulResolver
         return unresolved;
     }
 
-    private synchronized Map<BundleRevision, BundleWiring> getWirings()
+    private synchronized Map<Resource, Wiring> getWirings()
     {
-        Map<BundleRevision, BundleWiring> wirings = new HashMap<BundleRevision, BundleWiring>();
+        Map<Resource, Wiring> wirings = new HashMap<Resource, Wiring>();
 
         for (BundleRevision revision : m_revisions)
         {
