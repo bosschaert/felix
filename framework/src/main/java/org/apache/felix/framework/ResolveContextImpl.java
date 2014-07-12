@@ -26,7 +26,6 @@ import java.util.Map;
 
 import org.apache.felix.framework.StatefulResolver.ResolverHookRecord;
 import org.apache.felix.framework.resolver.CandidateComparator;
-import org.apache.felix.framework.resolver.ResolveException;
 import org.apache.felix.resolver.FelixResolveContext;
 import org.osgi.framework.wiring.BundleCapability;
 import org.osgi.framework.wiring.BundleRequirement;
@@ -120,11 +119,5 @@ public class ResolveContextImpl extends ResolveContext implements FelixResolveCo
     public Map<Resource, Wiring> getWirings()
     {
         return m_wirings;
-    }
-
-    // TODO can this one be removed?
-    public void checkNativeLibraries(BundleRevision rev) throws ResolveException
-    {
-        m_state.checkNativeLibraries(rev);
     }
 }
