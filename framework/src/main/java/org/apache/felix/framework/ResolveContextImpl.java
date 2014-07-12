@@ -27,6 +27,7 @@ import java.util.Map;
 import org.apache.felix.framework.StatefulResolver.ResolverHookRecord;
 import org.apache.felix.framework.resolver.CandidateComparator;
 import org.apache.felix.framework.resolver.ResolveException;
+import org.apache.felix.resolver.FelixResolveContext;
 import org.osgi.framework.wiring.BundleCapability;
 import org.osgi.framework.wiring.BundleRequirement;
 import org.osgi.framework.wiring.BundleRevision;
@@ -41,7 +42,7 @@ import org.osgi.service.resolver.ResolveContext;
  *
  * @author rickhall
  */
-public class ResolveContextImpl extends ResolveContext
+public class ResolveContextImpl extends ResolveContext implements FelixResolveContext
 {
     private final StatefulResolver m_state;
     private final Map<Resource, Wiring> m_wirings;
@@ -75,10 +76,9 @@ public class ResolveContextImpl extends ResolveContext
         return new ArrayList<Resource>(m_optional);
     }
 
-    // TODO can this one be removed?
-    public Collection<BundleRevision> getOndemandRevisions()
+    public Collection<Resource> getOndemandResources(Resource host)
     {
-        return new ArrayList<BundleRevision>(m_ondemand);
+        return new ArrayList<Resource>(m_ondemand);
     }
 
     @Override

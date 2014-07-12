@@ -420,15 +420,6 @@ class StatefulResolver
                             mandatory,
                             optional,
                             getFragments()));
-//                        null // TODO
-                        /*
-                    new ResolveContextImpl(
-                        this,
-                        getWirings(),
-                        record,
-                        mandatory,
-                        optional,
-                        getFragments()) */
             }
             catch (ResolutionException ex)
             {
@@ -512,16 +503,13 @@ class StatefulResolver
                     try
                     {
                         wireMap = m_resolver.resolve(
-                                null // TODO
-                            /*
                             new ResolveContextImpl(
-                                this,
-                                getWirings(),
-                                record,
-                                Collections.EMPTY_LIST,
-                                Collections.EMPTY_LIST,
-                                getFragments()),
-                            revision, pkgName */);
+                                    this,
+                                    getWirings(),
+                                    record,
+                                    Collections.EMPTY_LIST,
+                                    Collections.EMPTY_LIST,
+                                    getFragments()));
                     }
                     catch (ResolutionException ex)
                     {
