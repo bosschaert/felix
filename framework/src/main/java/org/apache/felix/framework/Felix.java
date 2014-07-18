@@ -18,10 +18,37 @@
  */
 package org.apache.felix.framework;
 
-import java.io.*;
-import java.net.*;
-import java.security.*;
-import java.util.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLStreamHandler;
+import java.security.AccessControlException;
+import java.security.Permission;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Dictionary;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.StringTokenizer;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.WeakHashMap;
 
 import org.apache.felix.framework.BundleWiringImpl.BundleClassLoader;
 import org.apache.felix.framework.ServiceRegistry.ServiceRegistryCallbacks;
@@ -30,7 +57,6 @@ import org.apache.felix.framework.cache.BundleCache;
 import org.apache.felix.framework.capabilityset.CapabilitySet;
 import org.apache.felix.framework.capabilityset.SimpleFilter;
 import org.apache.felix.framework.ext.SecurityProvider;
-import org.apache.felix.framework.resolver.ResolveException;
 import org.apache.felix.framework.util.EventDispatcher;
 import org.apache.felix.framework.util.FelixConstants;
 import org.apache.felix.framework.util.ListenerInfo;
@@ -73,6 +99,7 @@ import org.osgi.framework.wiring.BundleWire;
 import org.osgi.framework.wiring.BundleWiring;
 import org.osgi.framework.wiring.FrameworkWiring;
 import org.osgi.service.packageadmin.ExportedPackage;
+import org.osgi.service.resolver.ResolutionException;
 
 public class Felix extends BundleImpl implements Framework
 {
@@ -693,12 +720,12 @@ public class Felix extends BundleImpl implements Framework
                         Collections.singleton(adapt(BundleRevision.class)),
                         Collections.EMPTY_SET);
                 }
-                catch (ResolveException ex)
+                catch (ResolutionException ex)
                 {
                     // This should never happen.
                     throw new BundleException(
                         "Unresolved constraint in System Bundle:"
-                        + ex.getRequirement());
+                        + ex.getUnresolvedRequirements());
                 }
 
                 // Reload the cached bundles before creating and starting the
@@ -821,7 +848,7 @@ public class Felix extends BundleImpl implements Framework
                             {
                                 if (bundle != this)
                                 {
-                                    setBundleProtectionDomain((BundleImpl) bundle, (BundleRevisionImpl) ((BundleImpl) bundle).adapt(BundleRevisionImpl.class));
+                                    setBundleProtectionDomain((BundleImpl) bundle, ((BundleImpl) bundle).adapt(BundleRevisionImpl.class));
                                 }
                             }
                             catch (Exception ex)
@@ -3196,7 +3223,7 @@ public class Felix extends BundleImpl implements Framework
                 }
             }
         }
-        return (Bundle[]) bundles.toArray(new Bundle[bundles.size()]);
+        return bundles.toArray(new Bundle[bundles.size()]);
     }
 
     /**
@@ -3208,7 +3235,7 @@ public class Felix extends BundleImpl implements Framework
     Bundle[] getBundles()
     {
         Collection<Bundle> bundles = m_installedBundles[IDENTIFIER_MAP_IDX].values();
-        return (Bundle[]) bundles.toArray(new Bundle[bundles.size()]);
+        return bundles.toArray(new Bundle[bundles.size()]);
     }
 
     void addBundleListener(BundleImpl bundle, BundleListener l)
@@ -3573,7 +3600,7 @@ public class Felix extends BundleImpl implements Framework
     {
         try
         {
-            return (S) m_registry.getService(bundle, ref);
+            return m_registry.getService(bundle, ref);
         }
         catch (ServiceException ex)
         {
@@ -3967,7 +3994,7 @@ public class Felix extends BundleImpl implements Framework
                         }
                     }
                 }
-                catch (ResolveException ex)
+                catch (ResolutionException ex)
                 {
                     result = false;
                 }
@@ -3992,19 +4019,11 @@ public class Felix extends BundleImpl implements Framework
         {
             m_resolver.resolve(Collections.singleton(revision), Collections.EMPTY_SET);
         }
-        catch (ResolveException ex)
+        catch (ResolutionException ex)
         {
-            if (ex.getRevision() != null)
-            {
-                Bundle b = ex.getRevision().getBundle();
-                throw new BundleException(
-                    "Unresolved constraint in bundle "
-                    + b + ": " + ex.getMessage(), BundleException.RESOLVE_ERROR);
-            }
-            else
-            {
-                throw new BundleException(ex.getMessage(), BundleException.RESOLVE_ERROR);
-            }
+            throw new BundleException(ex.getMessage() +
+                " Unresolved requirements: " + ex.getUnresolvedRequirements(),
+                BundleException.RESOLVE_ERROR);
         }
     }
 
@@ -4385,7 +4404,7 @@ public class Felix extends BundleImpl implements Framework
             // Remove dependencies.
             m_dependencies.removeDependencies(bundle);
             // Reset the bundle object.
-            ((BundleImpl) bundle).refresh();
+            bundle.refresh();
             // Fire UNRESOLVED event if necessary
             // and notify state change..
             if (fire)

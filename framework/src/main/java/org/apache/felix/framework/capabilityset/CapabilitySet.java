@@ -32,15 +32,17 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+
 import org.apache.felix.framework.util.SecureAction;
 import org.apache.felix.framework.util.StringComparator;
 import org.apache.felix.framework.wiring.BundleCapabilityImpl;
 import org.osgi.framework.wiring.BundleCapability;
+import org.osgi.resource.Capability;
 
 public class CapabilitySet
 {
     private final Map<String, Map<Object, Set<BundleCapability>>> m_indices;
-    private final Set<BundleCapability> m_capSet = new HashSet<BundleCapability>();
+    private final Set<Capability> m_capSet = new HashSet<Capability>();
     private final static SecureAction m_secureAction = new SecureAction();
 
     public void dump()
@@ -177,17 +179,17 @@ public class CapabilitySet
         }
     }
 
-    public Set<BundleCapability> match(SimpleFilter sf, boolean obeyMandatory)
+    public Set<Capability> match(SimpleFilter sf, boolean obeyMandatory)
     {
-        Set<BundleCapability> matches = match(m_capSet, sf);
+        Set<Capability> matches = match(m_capSet, sf);
         return (obeyMandatory)
             ? matchMandatory(matches, sf)
             : matches;
     }
 
-    private Set<BundleCapability> match(Set<BundleCapability> caps, SimpleFilter sf)
+    private Set<Capability> match(Set<Capability> caps, SimpleFilter sf)
     {
-        Set<BundleCapability> matches = new HashSet<BundleCapability>();
+        Set<Capability> matches = new HashSet<Capability>();
 
         if (sf.getOperation() == SimpleFilter.MATCH_ALL)
         {
@@ -241,9 +243,9 @@ public class CapabilitySet
             }
             else
             {
-                for (Iterator<BundleCapability> it = caps.iterator(); it.hasNext(); )
+                for (Iterator<Capability> it = caps.iterator(); it.hasNext(); )
                 {
-                    BundleCapability cap = it.next();
+                    Capability cap = it.next();
                     Object lhs = cap.getAttributes().get(sf.getName());
                     if (lhs != null)
                     {
@@ -259,12 +261,12 @@ public class CapabilitySet
         return matches;
     }
 
-    public static boolean matches(BundleCapability cap, SimpleFilter sf)
+    public static boolean matches(Capability cap, SimpleFilter sf)
     {
         return matchesInternal(cap, sf) && matchMandatory(cap, sf);
     }
 
-    private static boolean matchesInternal(BundleCapability cap, SimpleFilter sf)
+    private static boolean matchesInternal(Capability cap, SimpleFilter sf)
     {
         boolean matched = true;
 
@@ -318,12 +320,12 @@ public class CapabilitySet
         return matched;
     }
 
-    private static Set<BundleCapability> matchMandatory(
-        Set<BundleCapability> caps, SimpleFilter sf)
+    private static Set<Capability> matchMandatory(
+        Set<Capability> caps, SimpleFilter sf)
     {
-        for (Iterator<BundleCapability> it = caps.iterator(); it.hasNext(); )
+        for (Iterator<Capability> it = caps.iterator(); it.hasNext(); )
         {
-            BundleCapability cap = it.next();
+            Capability cap = it.next();
             if (!matchMandatory(cap, sf))
             {
                 it.remove();
@@ -332,7 +334,7 @@ public class CapabilitySet
         return caps;
     }
 
-    private static boolean matchMandatory(BundleCapability cap, SimpleFilter sf)
+    private static boolean matchMandatory(Capability cap, SimpleFilter sf)
     {
         Map<String, Object> attrs = cap.getAttributes();
         for (Entry<String, Object> entry : attrs.entrySet())
@@ -442,7 +444,7 @@ public class CapabilitySet
                         return false;
                     }
                 case SimpleFilter.APPROX :
-                    return compareApproximate(((Comparable) lhs), rhs);
+                    return compareApproximate(lhs, rhs);
                 case SimpleFilter.SUBSTRING :
                     return SimpleFilter.compareSubstring((List<String>) rhs, (String) lhs);
                 default:
