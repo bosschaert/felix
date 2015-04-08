@@ -24,6 +24,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -31,7 +32,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.TreeMap;
+import java.util.SortedMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 import org.apache.felix.framework.util.SecureAction;
 import org.apache.felix.framework.util.StringComparator;
@@ -43,8 +46,8 @@ import org.osgi.resource.Capability;
 
 public class CapabilitySet
 {
-    private final Map<String, Map<Object, Set<BundleCapability>>> m_indices;
-    private final Set<Capability> m_capSet = new HashSet<Capability>();
+    private final SortedMap<String, Map<Object, Set<BundleCapability>>> m_indices; // Should also be concurrent!
+    private final Set<Capability> m_capSet = Collections.newSetFromMap(new ConcurrentHashMap<Capability, Boolean>());
     private final static SecureAction m_secureAction = new SecureAction();
 
     public void dump()
@@ -79,8 +82,8 @@ public class CapabilitySet
     public CapabilitySet(List<String> indexProps, boolean caseSensitive)
     {
         m_indices = (caseSensitive)
-            ? new TreeMap<String, Map<Object, Set<BundleCapability>>>()
-            : new TreeMap<String, Map<Object, Set<BundleCapability>>>(
+            ? new ConcurrentSkipListMap<String, Map<Object, Set<BundleCapability>>>()
+            : new ConcurrentSkipListMap<String, Map<Object, Set<BundleCapability>>>(
                 StringComparator.COMPARATOR);
         for (int i = 0; (indexProps != null) && (i < indexProps.size()); i++)
         {
@@ -405,13 +408,13 @@ public class CapabilitySet
             {
                 //Do nothing will check later if rhs is null
             }
-            
+
             if(rhs != null && rhs instanceof VersionRange)
             {
                 return ((VersionRange)rhs).isInRange((Version)lhs);
             }
         }
-        
+
         // If the type is comparable, then we can just return the
         // result immediately.
         if (lhs instanceof Comparable)
