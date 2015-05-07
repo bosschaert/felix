@@ -300,7 +300,7 @@ public class ServiceRegistry
             ((ServiceRegistrationImpl.ServiceReferenceImpl) ref).getRegistration();
 
         // We don't allow cycles when we call out to the service factory.
-        if ( reg.isLocked() )
+        if ( reg.currentThreadMarked() )
         {
             throw new ServiceException(
                     "ServiceFactory.getService() resulted in a cycle.",
@@ -308,63 +308,69 @@ public class ServiceRegistry
                     null);
         }
 
-        // no concurrent operations on the same service registration
-        reg.lock();
-        // Make sure the service registration is still valid.
-        if (reg.isValid())
-        {
-            // Get the usage count, if any.
-            // if prototype, we always create a new usage
-            usage = isPrototype ? null : getUsageCount(bundle, ref, null);
-
-            // If we don't have a usage count, then create one and
-            // since the spec says we increment usage count before
-            // actually getting the service object.
-            if (usage == null)
-            {
-                usage = addUsageCount(bundle, ref, isPrototype);
-            }
-
-            // Increment the usage count and grab the already retrieved
-            // service object, if one exists.
-            usage.m_count++;
-            svcObj = usage.m_svcObj;
-            if ( isServiceObjects )
-            {
-                usage.m_serviceObjectsCount++;
-            }
-        }
-
-        // If we have a usage count, but no service object, then we haven't
-        // cached the service object yet, so we need to create one now without
-        // holding the lock, since we will potentially call out to a service
-        // factory.
         try
         {
-            if ((usage != null) && (svcObj == null))
+            reg.markCurrentThread();
+
+            // Make sure the service registration is still valid.
+            if (reg.isValid())
             {
-                svcObj = reg.getService(bundle);
+                // Get the usage count, if any.
+                // if prototype, we always create a new usage
+                usage = isPrototype ? null : getUsageCount(bundle, ref, null);
+
+                // If we don't have a usage count, then create one and
+                // since the spec says we increment usage count before
+                // actually getting the service object.
+                if (usage == null)
+                {
+                    usage = addUsageCount(bundle, ref, isPrototype);
+                }
+
+                // Increment the usage count and grab the already retrieved
+                // service object, if one exists.
+                usage.m_count++;
+                svcObj = usage.m_svcObj;
+                if ( isServiceObjects )
+                {
+                    usage.m_serviceObjectsCount++;
+                }
+            }
+
+            // If we have a usage count, but no service object, then we haven't
+            // cached the service object yet, so we need to create one now without
+            // holding the lock, since we will potentially call out to a service
+            // factory.
+            try
+            {
+                if ((usage != null) && (svcObj == null))
+                {
+                    svcObj = reg.getService(bundle);
+                }
+            }
+            finally
+            {
+                // If we successfully retrieved a service object, then we should
+                // cache it in the usage count. If not, we should flush the usage
+                // count. Either way, we need to unlock the service registration
+                // so that any threads waiting for it can continue.
+
+                // Before caching the service object, double check to see if
+                // the registration is still valid, since it may have been
+                // unregistered while we didn't hold the lock.
+                if (!reg.isValid() || (svcObj == null))
+                {
+                    flushUsageCount(bundle, ref, usage);
+                }
+                else
+                {
+                    usage.m_svcObj = svcObj;
+                }
             }
         }
         finally
         {
-            // If we successfully retrieved a service object, then we should
-            // cache it in the usage count. If not, we should flush the usage
-            // count. Either way, we need to unlock the service registration
-            // so that any threads waiting for it can continue.
-
-            // Before caching the service object, double check to see if
-            // the registration is still valid, since it may have been
-            // unregistered while we didn't hold the lock.
-            if (!reg.isValid() || (svcObj == null))
-            {
-                flushUsageCount(bundle, ref, usage);
-            }
-            else
-            {
-                usage.m_svcObj = svcObj;
-            }
-            reg.unlock();
+            reg.unmarkCurrentThread();
         }
 
         return (S) svcObj;
@@ -375,7 +381,7 @@ public class ServiceRegistry
         final ServiceRegistrationImpl reg =
             ((ServiceRegistrationImpl.ServiceReferenceImpl) ref).getRegistration();
 
-        if ( reg.isLocked() )
+        if ( reg.currentThreadMarked() )
         {
             throw new IllegalStateException(
                     "ServiceFactory.ungetService() resulted in a cycle.");
@@ -383,65 +389,65 @@ public class ServiceRegistry
 
         UsageCount usage = null;
 
-        // First make sure that no existing operation is currently
-        // being performed by another thread on the service registration.
-        reg.lock();
-
-        // Get the usage count.
-        usage = getUsageCount(bundle, ref, svcObj);
-        // If there is no cached services, then just return immediately.
-        if (usage == null)
-        {
-            reg.unlock();
-            return false;
-        }
-        // if this is a call from service objects and the service was not fetched from
-        // there, return false
-        if ( svcObj != null )
-        {
-            // TODO have a proper conditional decrement and get, how???
-            usage.m_serviceObjectsCount--;
-            if (usage.m_serviceObjectsCount < 0)
-            {
-                reg.unlock();
-                return false;
-            }
-        }
-
-        // If usage count will go to zero, then unget the service
-        // from the registration; we do this outside the lock
-        // since this might call out to the service factory.
         try
         {
-            if (usage.m_count == 1)
+            // Mark the current thread to avoid cycles
+            reg.markCurrentThread();
+
+            // Get the usage count.
+            usage = getUsageCount(bundle, ref, svcObj);
+            // If there is no cached services, then just return immediately.
+            if (usage == null)
             {
-                // Remove reference from usages array.
-                ((ServiceRegistrationImpl.ServiceReferenceImpl) ref)
-                    .getRegistration().ungetService(bundle, usage.m_svcObj);
+                return false;
+            }
+            // if this is a call from service objects and the service was not fetched from
+            // there, return false
+            if ( svcObj != null )
+            {
+                // TODO have a proper conditional decrement and get, how???
+                usage.m_serviceObjectsCount--;
+                if (usage.m_serviceObjectsCount < 0)
+                {
+                    return false;
+                }
+            }
+
+            // If usage count will go to zero, then unget the service
+            // from the registration; we do this outside the lock
+            // since this might call out to the service factory.
+            try
+            {
+                if (usage.m_count == 1)
+                {
+                    // Remove reference from usages array.
+                    ((ServiceRegistrationImpl.ServiceReferenceImpl) ref)
+                        .getRegistration().ungetService(bundle, usage.m_svcObj);
+                }
+            }
+            finally
+            {
+                // Finally, decrement usage count and flush if it goes to zero or
+                // the registration became invalid while we were not holding the
+                // lock. Either way, unlock the service registration so that any
+                // threads waiting for it can continue.
+
+                // Decrement usage count, which spec says should happen after
+                // ungetting the service object.
+                usage.m_count--;
+
+                // If the registration is invalid or the usage count has reached
+                // zero, then flush it.
+                if (!reg.isValid() || (usage.m_count <= 0))
+                {
+                    usage.m_svcObj = null;
+                    flushUsageCount(bundle, ref, usage);
+                }
             }
         }
         finally
         {
-            // Finally, decrement usage count and flush if it goes to zero or
-            // the registration became invalid while we were not holding the
-            // lock. Either way, unlock the service registration so that any
-            // threads waiting for it can continue.
-
-            // Decrement usage count, which spec says should happen after
-            // ungetting the service object.
-            usage.m_count--;
-
-            // If the registration is invalid or the usage count has reached
-            // zero, then flush it.
-            if (!reg.isValid() || (usage.m_count <= 0))
-            {
-                usage.m_svcObj = null;
-                flushUsageCount(bundle, ref, usage);
-            }
-
-            // Release the registration lock so any waiting threads can
-            // continue.
-            reg.unlock();
+            reg.unmarkCurrentThread();
         }
 
         return true;
