@@ -27,7 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.felix.framework.capabilityset.CapabilitySet;
 import org.apache.felix.framework.capabilityset.SimpleFilter;
@@ -197,7 +199,7 @@ public class ServiceRegistry
             {
                 if (usages[x].m_ref.equals(ref))
                 {
-                    ungetService(clients[i], ref, (usages[x].m_prototype ? usages[x].m_svcObj : null));
+                    ungetService(clients[i], ref, (usages[x].m_prototype ? usages[x].getService() : null));
                 }
             }
         }
@@ -330,7 +332,7 @@ public class ServiceRegistry
                 // Increment the usage count and grab the already retrieved
                 // service object, if one exists.
                 usage.m_count++;
-                svcObj = usage.m_svcObj;
+                svcObj = usage.getService();
                 if ( isServiceObjects )
                 {
                     usage.m_serviceObjectsCount++;
@@ -345,26 +347,48 @@ public class ServiceRegistry
             {
                 if ((usage != null) && (svcObj == null))
                 {
-                    svcObj = reg.getService(bundle);
+                    ServiceHolder holder = null;
+
+                    // There is a possibility that the holder is unset between the compareAndSet() and the get()
+                    // below. If that happens get() returns null and we may have to set a new holder. This is
+                    // why the below section is in a loop.
+                    while (holder == null)
+                    {
+                        ServiceHolder h = new ServiceHolder();
+                        if (usage.m_svcHolderRef.compareAndSet(null, h))
+                        {
+                            holder = h;
+                            svcObj = reg.getService(bundle);
+                            holder.m_service = svcObj;
+                            holder.m_latch.countDown();
+                        }
+                        else
+                        {
+                            holder = usage.m_svcHolderRef.get();
+                            if (holder != null)
+                            {
+                                try
+                                {
+                                    holder.m_latch.await();
+                                }
+                                catch (InterruptedException e)
+                                {
+                                    throw new RuntimeException(e);
+                                }
+                                svcObj = holder.m_service;
+                            }
+                        }
+                    }
                 }
             }
             finally
             {
-                // If we successfully retrieved a service object, then we should
-                // cache it in the usage count. If not, we should flush the usage
-                // count. Either way, we need to unlock the service registration
-                // so that any threads waiting for it can continue.
-
                 // Before caching the service object, double check to see if
                 // the registration is still valid, since it may have been
                 // unregistered while we didn't hold the lock.
                 if (!reg.isValid() || (svcObj == null))
                 {
                     flushUsageCount(bundle, ref, usage);
-                }
-                else
-                {
-                    usage.m_svcObj = svcObj;
                 }
             }
         }
@@ -422,7 +446,7 @@ public class ServiceRegistry
                 {
                     // Remove reference from usages array.
                     ((ServiceRegistrationImpl.ServiceReferenceImpl) ref)
-                        .getRegistration().ungetService(bundle, usage.m_svcObj);
+                        .getRegistration().ungetService(bundle, usage.getService());
                 }
             }
             finally
@@ -440,7 +464,8 @@ public class ServiceRegistry
                 // zero, then flush it.
                 if (!reg.isValid() || (usage.m_count <= 0))
                 {
-                    usage.m_svcObj = null;
+                    // Reset object -=
+                    usage.m_svcHolderRef.set(null);
                     flushUsageCount(bundle, ref, usage);
                 }
             }
@@ -477,7 +502,7 @@ public class ServiceRegistry
         for (int i = 0; i < usages.length; i++)
         {
             // Keep ungetting until all usage count is zero.
-            while (ungetService(bundle, usages[i].m_ref, usages[i].m_prototype ? usages[i].m_svcObj : null))
+            while (ungetService(bundle, usages[i].m_ref, usages[i].m_prototype ? usages[i].getService() : null))
             {
                 // Empty loop body.
             }
@@ -542,7 +567,7 @@ public class ServiceRegistry
         for (int i = 0; (usages != null) && (i < usages.length); i++)
         {
             if (usages[i].m_ref.equals(ref)
-               && ((svcObj == null && !usages[i].m_prototype) || usages[i].m_svcObj == svcObj))
+               && ((svcObj == null && !usages[i].m_prototype) || usages[i].getService() == svcObj))
             {
                 return usages[i];
             }
@@ -638,21 +663,32 @@ public class ServiceRegistry
         return this.hookRegistry;
     }
 
-    private static class UsageCount
+    static class UsageCount
     {
         public final ServiceReference<?> m_ref;
         public final boolean m_prototype;
 
         public volatile int m_count;
         public volatile int m_serviceObjectsCount;
-
-        public volatile Object m_svcObj;
+        final AtomicReference<ServiceHolder> m_svcHolderRef = new AtomicReference<ServiceHolder>();
 
         UsageCount(final ServiceReference<?> ref, final boolean isPrototype)
         {
             m_ref = ref;
             m_prototype = isPrototype;
         }
+
+        Object getService()
+        {
+            ServiceHolder sh = m_svcHolderRef.get();
+            return sh == null ? null : sh.m_service;
+        }
+    }
+
+    static class ServiceHolder
+    {
+        final CountDownLatch m_latch = new CountDownLatch(1);
+        volatile Object m_service;
     }
 
     public interface ServiceRegistryCallbacks
