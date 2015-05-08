@@ -330,14 +330,11 @@ public class ServiceRegistry
                 {
                     usage.m_serviceObjectsCount.incrementAndGet();
                 }
-            }
 
-            // If we have a usage count, but no service object, then we haven't
-            // cached the service object yet, so we need to create one now without
-            // holding the lock, since we will potentially call out to a service
-            // factory.
-            try
-            {
+                // If we have a usage count, but no service object, then we haven't
+                // cached the service object yet, so we need to create one now without
+                // holding the lock, since we will potentially call out to a service
+                // factory.
                 if ((usage != null) && (svcObj == null))
                 {
                     ServiceHolder holder = null;
@@ -374,23 +371,17 @@ public class ServiceRegistry
                     }
                 }
             }
-            finally
-            {
-                // Before caching the service object, double check to see if
-                // the registration is still valid, since it may have been
-                // unregistered while we didn't hold the lock.
-                if (!reg.isValid() || (svcObj == null))
-                {
-                    flushUsageCount(bundle, ref, usage);
-                }
-            }
         }
         finally
         {
             reg.unmarkCurrentThread();
+
+            if (!reg.isValid() || (svcObj == null))
+            {
+                flushUsageCount(bundle, ref, usage);
+            }
         }
 
-        // TODO Maybe check whether the reg is still valid?
         return (S) svcObj;
     }
 
@@ -405,15 +396,13 @@ public class ServiceRegistry
                     "ServiceFactory.ungetService() resulted in a cycle.");
         }
 
-        UsageCount usage = null;
-
         try
         {
             // Mark the current thread to avoid cycles
             reg.markCurrentThread();
 
             // Get the usage count.
-            usage = obtainUsageCount(bundle, ref, svcObj, null);
+            UsageCount usage = obtainUsageCount(bundle, ref, svcObj, null);
             // If there is no cached services, then just return immediately.
             if (usage == null)
             {
@@ -434,7 +423,7 @@ public class ServiceRegistry
             // since this might call out to the service factory.
             try
             {
-                if (usage.m_count.get() == 1) // TODO is this atomic???
+                if (usage.m_count.get() == 1)
                 {
                     // Remove reference from usages array.
                     ((ServiceRegistrationImpl.ServiceReferenceImpl) ref)
@@ -456,7 +445,6 @@ public class ServiceRegistry
                 // zero, then flush it.
                 if ((c <= 0) || !reg.isValid())
                 {
-                    // Reset object -=
                     usage.m_svcHolderRef.set(null);
                     flushUsageCount(bundle, ref, usage);
                 }
@@ -550,7 +538,7 @@ public class ServiceRegistry
     {
         UsageCount usage = null;
 
-        // This method uses an optimistic concurrency mechnism with a conditional put/replace
+        // This method uses an optimistic concurrency mechanism with a conditional put/replace
         // on the m_inUseMap. If this fails (because another thread made changes) this thread
         // retries the operation. This is the purpose of the while loop.
         boolean success = false;
@@ -611,39 +599,56 @@ public class ServiceRegistry
     **/
     private void flushUsageCount(Bundle bundle, ServiceReference<?> ref, UsageCount uc)
     {
-        UsageCount[] usages = m_inUseMap.get(bundle);
-        for (int i = 0; (usages != null) && (i < usages.length); i++)
+        // This method uses an optimistic concurrency mechanism with conditional modifications
+        // on the m_inUseMap. If this fails (because another thread made changes) this thread
+        // retries the operation. This is the purpose of the while loop.
+        boolean success = false;
+        while (!success)
         {
-            if ((uc == null && usages[i].m_ref.equals(ref)) || (uc == usages[i]))
+            UsageCount[] usages = m_inUseMap.get(bundle);
+            final UsageCount[] orgUsages = usages;
+            for (int i = 0; (usages != null) && (i < usages.length); i++)
             {
-                // If this is the only usage, then point to empty list.
-                if ((usages.length - 1) == 0)
+                if ((uc == null && usages[i].m_ref.equals(ref)) || (uc == usages[i]))
                 {
-                    usages = null;
-                }
-                // Otherwise, we need to do some array copying.
-                else
-                {
-                    UsageCount[] newUsages = new UsageCount[usages.length - 1];
-                    System.arraycopy(usages, 0, newUsages, 0, i);
-                    if (i < newUsages.length)
+                    // If this is the only usage, then point to empty list.
+                    if ((usages.length - 1) == 0)
                     {
-                        System.arraycopy(
-                            usages, i + 1, newUsages, i, newUsages.length - i);
+                        usages = null;
                     }
-                    usages = newUsages;
-                    i--;
+                    // Otherwise, we need to do some array copying.
+                    else
+                    {
+                        UsageCount[] newUsages = new UsageCount[usages.length - 1];
+                        System.arraycopy(usages, 0, newUsages, 0, i);
+                        if (i < newUsages.length)
+                        {
+                            System.arraycopy(
+                                usages, i + 1, newUsages, i, newUsages.length - i);
+                        }
+                        usages = newUsages;
+                        i--;
+                    }
                 }
             }
-        }
 
-        if (usages != null)
-        {
-            m_inUseMap.put(bundle, usages);
-        }
-        else
-        {
-            m_inUseMap.remove(bundle);
+            if (usages == orgUsages)
+                return; // no change in map
+
+            if (orgUsages != null)
+            {
+                if (usages != null)
+                    success = m_inUseMap.replace(bundle, orgUsages, usages);
+                else
+                    success = m_inUseMap.remove(bundle, orgUsages);
+            }
+            else
+            {
+                if (usages != null)
+                    success = m_inUseMap.putIfAbsent(bundle, usages) == null;
+                else
+                    return; // both orgUsages and usages are null. Should not get here.
+            }
         }
     }
 
