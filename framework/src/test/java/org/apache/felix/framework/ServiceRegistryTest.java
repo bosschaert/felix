@@ -19,10 +19,13 @@
 package org.apache.felix.framework;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 
 import junit.framework.TestCase;
 
+import org.apache.felix.framework.ServiceRegistry.ServiceHolder;
 import org.apache.felix.framework.ServiceRegistry.UsageCount;
 import org.mockito.Mockito;
 import org.osgi.framework.Bundle;
@@ -328,6 +331,97 @@ public class ServiceRegistryTest extends TestCase
     }
     */ // TODO re-enable
 
+    public void testObtainUsageCount() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        @SuppressWarnings("unchecked")
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+
+        assertEquals("Precondition", 0, inUseMap.size());
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
+        UsageCount uc = sr.obtainUsageCount(b, ref, null, false);
+        assertEquals(1, inUseMap.size());
+        assertEquals(1, inUseMap.get(b).length);
+        assertSame(uc, inUseMap.get(b)[0]);
+        assertSame(ref, uc.m_ref);
+        assertFalse(uc.m_prototype);
+
+        UsageCount uc2 = sr.obtainUsageCount(b, ref, null, false);
+        assertSame(uc, uc2);
+
+        ServiceReference<?> ref2 = Mockito.mock(ServiceReference.class);
+        UsageCount uc3 = sr.obtainUsageCount(b, ref2, null, false);
+        assertNotSame(uc3, uc2);
+        assertSame(ref2, uc3.m_ref);
+    }
+
+    public void testObtainUsageCountPrototype() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        @SuppressWarnings("unchecked")
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
+        UsageCount uc = sr.obtainUsageCount(b, ref, null, true);
+        assertEquals(1, inUseMap.size());
+        assertEquals(1, inUseMap.values().iterator().next().length);
+
+        ServiceReference<?> ref2 = Mockito.mock(ServiceReference.class);
+        UsageCount uc2 = sr.obtainUsageCount(b, ref2, null, true);
+        assertEquals(1, inUseMap.size());
+        assertEquals(2, inUseMap.values().iterator().next().length);
+        List<UsageCount> ucl = Arrays.asList(inUseMap.get(b));
+        assertTrue(ucl.contains(uc));
+        assertTrue(ucl.contains(uc2));
+    }
+
+    public void testObtainUsageCountPrototypeUnknownLookup() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        @SuppressWarnings("unchecked")
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
+
+        UsageCount uc = new UsageCount(ref, true);
+        ServiceHolder sh = new ServiceHolder();
+        String svc = "foobar";
+        sh.m_service = svc;
+        uc.m_svcHolderRef.set(sh);
+        inUseMap.put(b, new UsageCount[] {uc});
+
+        assertNull(sr.obtainUsageCount(b, Mockito.mock(ServiceReference.class), null, null));
+
+        UsageCount uc2 = sr.obtainUsageCount(b, ref, svc, null);
+        assertSame(uc, uc2);
+    }
+
+    public void testObtainUsageCountPrototypeUnknownLookup2() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        @SuppressWarnings("unchecked")
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
+
+        UsageCount uc = new UsageCount(ref, false);
+        inUseMap.put(b, new UsageCount[] {uc});
+
+        assertNull(sr.obtainUsageCount(b, Mockito.mock(ServiceReference.class), null, null));
+
+        UsageCount uc2 = sr.obtainUsageCount(b, ref, null, null);
+        assertSame(uc, uc2);
+    }
+
     public void testFlushUsageCount() throws Exception
     {
         ServiceRegistry sr = new ServiceRegistry(null, null);
@@ -435,6 +529,11 @@ public class ServiceRegistryTest extends TestCase
         sr.flushUsageCount(b, ref2, null);
         assertEquals(1, inUseMap.size());
 
+    }
+
+    public void testFlushUsageCountRetry()
+    {
+        fail("TODO");
     }
 
     private Object getPrivateField(Object sr) throws NoSuchFieldException,

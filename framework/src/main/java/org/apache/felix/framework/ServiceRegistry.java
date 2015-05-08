@@ -534,7 +534,7 @@ public class ServiceRegistry
         return m_logger;
     }
 
-    private UsageCount obtainUsageCount(Bundle bundle, ServiceReference<?> ref, Object svcObj, Boolean isPrototype)
+    UsageCount obtainUsageCount(Bundle bundle, ServiceReference<?> ref, Object svcObj, Boolean isPrototype)
     {
         UsageCount usage = null;
 
