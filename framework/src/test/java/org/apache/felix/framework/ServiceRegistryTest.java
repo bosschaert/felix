@@ -467,6 +467,43 @@ public class ServiceRegistryTest extends TestCase
         assertNotSame(ref, l.get(0).m_ref);
     }
 
+    @SuppressWarnings("unchecked")
+    public void testObtainUsageCountRetryNeeded2() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        final Bundle b = Mockito.mock(Bundle.class);
+
+        final ConcurrentMap<Bundle, UsageCount[]> orgInUseMap =
+            (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+        orgInUseMap.put(b, new UsageCount[] {new UsageCount(Mockito.mock(ServiceReference.class), false)});
+
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+            Mockito.mock(ConcurrentMap.class, AdditionalAnswers.delegatesTo(orgInUseMap));
+        Mockito.doAnswer(new Answer<Boolean>()
+            {
+                @Override
+                public Boolean answer(InvocationOnMock invocation) throws Throwable
+                {
+                    orgInUseMap.remove(b);
+                    return false;
+                }
+            }).when(inUseMap).replace(Mockito.any(Bundle.class),
+                    Mockito.any(UsageCount[].class), Mockito.any(UsageCount[].class));
+        setPrivateField(sr, "m_inUseMap", inUseMap);
+
+        ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
+
+        assertEquals("Precondition", 1, inUseMap.size());
+        assertEquals("Precondition", 1, inUseMap.values().iterator().next().length);
+        assertNotSame("Precondition", ref, inUseMap.get(b)[0].m_ref);
+        UsageCount uc = sr.obtainUsageCount(b, ref, null, false);
+        assertEquals(1, inUseMap.size());
+        assertEquals(1, inUseMap.values().iterator().next().length);
+        assertSame("The old usage count should have been removed by the mock and this one should have been added",
+                ref, inUseMap.get(b)[0].m_ref);
+    }
+
     public void testFlushUsageCount() throws Exception
     {
         ServiceRegistry sr = new ServiceRegistry(null, null);
