@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -323,11 +324,11 @@ public class ServiceRegistry
 
                 // Increment the usage count and grab the already retrieved
                 // service object, if one exists.
-                usage.m_count++;
+                usage.m_count.incrementAndGet();
                 svcObj = usage.getService();
                 if ( isServiceObjects )
                 {
-                    usage.m_serviceObjectsCount++;
+                    usage.m_serviceObjectsCount.incrementAndGet();
                 }
             }
 
@@ -422,9 +423,7 @@ public class ServiceRegistry
             // there, return false
             if ( svcObj != null )
             {
-                // TODO have a proper conditional decrement and get, how???
-                usage.m_serviceObjectsCount--;
-                if (usage.m_serviceObjectsCount < 0)
+                if (usage.m_serviceObjectsCount.decrementAndGet() < 0)
                 {
                     return false;
                 }
@@ -435,7 +434,7 @@ public class ServiceRegistry
             // since this might call out to the service factory.
             try
             {
-                if (usage.m_count == 1)
+                if (usage.m_count.get() == 1) // TODO is this atomic???
                 {
                     // Remove reference from usages array.
                     ((ServiceRegistrationImpl.ServiceReferenceImpl) ref)
@@ -451,11 +450,11 @@ public class ServiceRegistry
 
                 // Decrement usage count, which spec says should happen after
                 // ungetting the service object.
-                usage.m_count--;
+                int c = usage.m_count.decrementAndGet();
 
                 // If the registration is invalid or the usage count has reached
                 // zero, then flush it.
-                if (!reg.isValid() || (usage.m_count <= 0))
+                if ((c <= 0) || !reg.isValid())
                 {
                     // Reset object -=
                     usage.m_svcHolderRef.set(null);
@@ -655,11 +654,11 @@ public class ServiceRegistry
 
     static class UsageCount
     {
-        public final ServiceReference<?> m_ref;
-        public final boolean m_prototype;
+        final ServiceReference<?> m_ref;
+        final boolean m_prototype;
 
-        public volatile int m_count;
-        public volatile int m_serviceObjectsCount;
+        final AtomicInteger m_count = new AtomicInteger();
+        final AtomicInteger m_serviceObjectsCount = new AtomicInteger();
         final AtomicReference<ServiceHolder> m_svcHolderRef = new AtomicReference<ServiceHolder>();
 
         UsageCount(final ServiceReference<?> ref, final boolean isPrototype)
