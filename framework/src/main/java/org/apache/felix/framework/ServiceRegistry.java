@@ -114,7 +114,7 @@ public class ServiceRegistry
         final Bundle bundle,
         final String[] classNames,
         final Object svcObj,
-        final Dictionary dict)
+        final Dictionary<?,?> dict)
     {
         // Create the service registration.
         final ServiceRegistrationImpl reg = new ServiceRegistrationImpl(
@@ -317,17 +317,9 @@ public class ServiceRegistry
             // Make sure the service registration is still valid.
             if (reg.isValid())
             {
-                // Get the usage count, if any.
-                // if prototype, we always create a new usage
-                usage = isPrototype ? null : getUsageCount(bundle, ref, null);
-
-                // If we don't have a usage count, then create one and
-                // since the spec says we increment usage count before
-                // actually getting the service object.
-                if (usage == null)
-                {
-                    usage = addUsageCount(bundle, ref, isPrototype);
-                }
+                // Get the usage count, or create a new one. If this is a
+                // prototype, the we'll alway create a new one.
+                usage = obtainUsageCount(bundle, ref, null, isPrototype);
 
                 // Increment the usage count and grab the already retrieved
                 // service object, if one exists.
@@ -397,6 +389,7 @@ public class ServiceRegistry
             reg.unmarkCurrentThread();
         }
 
+        // TODO Maybe check whether the reg is still valid?
         return (S) svcObj;
     }
 
@@ -419,7 +412,7 @@ public class ServiceRegistry
             reg.markCurrentThread();
 
             // Get the usage count.
-            usage = getUsageCount(bundle, ref, svcObj);
+            usage = obtainUsageCount(bundle, ref, svcObj, null);
             // If there is no cached services, then just return immediately.
             if (usage == null)
             {
@@ -539,7 +532,7 @@ public class ServiceRegistry
         return bundles;
     }
 
-    void servicePropertiesModified(ServiceRegistration<?> reg, Dictionary oldProps)
+    void servicePropertiesModified(ServiceRegistration<?> reg, Dictionary<?,?> oldProps)
     {
         this.hookRegistry.updateHooks(reg.getReference());
         if (m_callbacks != null)
@@ -554,57 +547,54 @@ public class ServiceRegistry
         return m_logger;
     }
 
-    /**
-     * Utility method to retrieve the specified bundle's usage count for the
-     * specified service reference.
-     * @param bundle The bundle whose usage counts are being searched.
-     * @param ref The service reference to find in the bundle's usage counts.
-     * @return The associated usage count or null if not found.
-    **/
-    private UsageCount getUsageCount(Bundle bundle, ServiceReference<?> ref, final Object svcObj)
+    private UsageCount obtainUsageCount(Bundle bundle, ServiceReference<?> ref, Object svcObj, Boolean isPrototype)
     {
-        UsageCount[] usages = m_inUseMap.get(bundle);
-        for (int i = 0; (usages != null) && (i < usages.length); i++)
+        UsageCount usage = null;
+
+        // This method uses an optimistic concurrency mechnism with a conditional put/replace
+        // on the m_inUseMap. If this fails (because another thread made changes) this thread
+        // retries the operation. This is the purpose of the while loop.
+        boolean success = false;
+        while (!success)
         {
-            if (usages[i].m_ref.equals(ref)
-               && ((svcObj == null && !usages[i].m_prototype) || usages[i].getService() == svcObj))
+            UsageCount[] usages = m_inUseMap.get(bundle);
+
+            // If we know it's a prototype, then we always need to create a new usage count
+            if (!Boolean.TRUE.equals(isPrototype))
             {
-                return usages[i];
+                for (int i = 0; (usages != null) && (i < usages.length); i++)
+                {
+                    if (usages[i].m_ref.equals(ref)
+                       && ((svcObj == null && !usages[i].m_prototype) || usages[i].getService() == svcObj))
+                    {
+                        return usages[i];
+                    }
+                }
+            }
+
+            // We haven't found an existing usage count object so we need to create on. For this we need to
+            // know whether this is a prototype or not.
+            if (isPrototype == null)
+            {
+                // If this parameter isn't passed in we can't create a usage count.
+                return null;
+            }
+
+            // Add a new Usage Count. TODO explain optimistic mechanism with retry
+            usage = new UsageCount(ref, isPrototype);
+            if (usages == null)
+            {
+                UsageCount[] newUsages = new UsageCount[] { usage };
+                success = m_inUseMap.putIfAbsent(bundle, newUsages) == null;
+            }
+            else
+            {
+                UsageCount[] newUsages = new UsageCount[usages.length + 1];
+                System.arraycopy(usages, 0, newUsages, 0, usages.length);
+                newUsages[usages.length] = usage;
+                success = m_inUseMap.replace(bundle, usages, newUsages);
             }
         }
-        return null;
-    }
-
-    /**
-     * Utility method to update the specified bundle's usage count array to
-     * include the specified service. This method should only be called
-     * to add a usage count for a previously unreferenced service. If the
-     * service already has a usage count, then the existing usage count
-     * counter simply needs to be incremented.
-     * @param bundle The bundle acquiring the service.
-     * @param ref The service reference of the acquired service.
-     * @param svcObj The service object of the acquired service.
-    **/
-    private UsageCount addUsageCount(Bundle bundle, ServiceReference<?> ref, boolean isPrototype)
-    {
-        UsageCount[] usages = m_inUseMap.get(bundle);
-
-        UsageCount usage = new UsageCount(ref, isPrototype);
-
-        if (usages == null)
-        {
-            usages = new UsageCount[] { usage };
-        }
-        else
-        {
-            UsageCount[] newUsages = new UsageCount[usages.length + 1];
-            System.arraycopy(usages, 0, newUsages, 0, usages.length);
-            newUsages[usages.length] = usage;
-            usages = newUsages;
-        }
-
-        m_inUseMap.put(bundle, usages);
-
         return usage;
     }
 
@@ -693,6 +683,6 @@ public class ServiceRegistry
 
     public interface ServiceRegistryCallbacks
     {
-        void serviceChanged(ServiceEvent event, Dictionary oldProps);
+        void serviceChanged(ServiceEvent event, Dictionary<?,?> oldProps);
     }
 }
