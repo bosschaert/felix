@@ -597,7 +597,7 @@ public class ServiceRegistry
      * @param bundle The bundle whose usage count should be removed.
      * @param ref The service reference whose usage count should be removed.
     **/
-    private void flushUsageCount(Bundle bundle, ServiceReference<?> ref, UsageCount uc)
+    void flushUsageCount(Bundle bundle, ServiceReference<?> ref, UsageCount uc)
     {
         // This method uses an optimistic concurrency mechanism with conditional modifications
         // on the m_inUseMap. If this fails (because another thread made changes) this thread
@@ -641,13 +641,6 @@ public class ServiceRegistry
                     success = m_inUseMap.replace(bundle, orgUsages, usages);
                 else
                     success = m_inUseMap.remove(bundle, orgUsages);
-            }
-            else
-            {
-                if (usages != null)
-                    success = m_inUseMap.putIfAbsent(bundle, usages) == null;
-                else
-                    return; // both orgUsages and usages are null. Should not get here.
             }
         }
     }
