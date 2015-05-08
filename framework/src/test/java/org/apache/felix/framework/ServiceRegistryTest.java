@@ -19,6 +19,7 @@
 package org.apache.felix.framework;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
@@ -27,7 +28,10 @@ import junit.framework.TestCase;
 
 import org.apache.felix.framework.ServiceRegistry.ServiceHolder;
 import org.apache.felix.framework.ServiceRegistry.UsageCount;
+import org.mockito.AdditionalAnswers;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.ServiceReference;
 
@@ -336,7 +340,7 @@ public class ServiceRegistryTest extends TestCase
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         assertEquals("Precondition", 0, inUseMap.size());
 
@@ -363,7 +367,7 @@ public class ServiceRegistryTest extends TestCase
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         Bundle b = Mockito.mock(Bundle.class);
         ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
@@ -385,7 +389,7 @@ public class ServiceRegistryTest extends TestCase
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         Bundle b = Mockito.mock(Bundle.class);
         ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
@@ -408,7 +412,7 @@ public class ServiceRegistryTest extends TestCase
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         Bundle b = Mockito.mock(Bundle.class);
         ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
@@ -422,12 +426,53 @@ public class ServiceRegistryTest extends TestCase
         assertSame(uc, uc2);
     }
 
+    @SuppressWarnings("unchecked")
+    public void testObtainUsageCountRetryNeeded1() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        final Bundle b = Mockito.mock(Bundle.class);
+
+        final ConcurrentMap<Bundle, UsageCount[]> orgInUseMap =
+            (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+            Mockito.mock(ConcurrentMap.class, AdditionalAnswers.delegatesTo(orgInUseMap));
+        Mockito.doAnswer(new Answer<UsageCount[]>()
+            {
+                @Override
+                public UsageCount[] answer(InvocationOnMock invocation) throws Throwable
+                {
+                    // This mimicks another thread putting another UsageCount in concurrently
+                    // The putIfAbsent() will fail and it has to retry
+                    UsageCount uc = new UsageCount(Mockito.mock(ServiceReference.class), false);
+                    UsageCount[] uca = new UsageCount[] {uc};
+                    orgInUseMap.put(b, uca);
+                    return uca;
+                }
+            }).when(inUseMap).putIfAbsent(Mockito.any(Bundle.class), Mockito.any(UsageCount[].class));
+        setPrivateField(sr, "m_inUseMap", inUseMap);
+
+        ServiceReference<?> ref = Mockito.mock(ServiceReference.class);
+
+        assertEquals(0, orgInUseMap.size());
+        UsageCount uc = sr.obtainUsageCount(b, ref, null, false);
+        assertEquals(1, orgInUseMap.size());
+        assertEquals(2, orgInUseMap.get(b).length);
+        assertSame(ref, uc.m_ref);
+        assertFalse(uc.m_prototype);
+        List<UsageCount> l = new ArrayList<UsageCount>(Arrays.asList(orgInUseMap.get(b)));
+        l.remove(uc);
+        assertEquals("There should be one UsageCount left", 1, l.size());
+        assertNotSame(ref, l.get(0).m_ref);
+    }
+
     public void testFlushUsageCount() throws Exception
     {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         Bundle b = Mockito.mock(Bundle.class);
 
@@ -455,7 +500,7 @@ public class ServiceRegistryTest extends TestCase
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         Bundle b = Mockito.mock(Bundle.class);
         Bundle b2 = Mockito.mock(Bundle.class);
@@ -484,7 +529,7 @@ public class ServiceRegistryTest extends TestCase
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         Bundle b = Mockito.mock(Bundle.class);
 
@@ -506,7 +551,7 @@ public class ServiceRegistryTest extends TestCase
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         @SuppressWarnings("unchecked")
-        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr);
+        ConcurrentMap<Bundle, UsageCount[]> inUseMap = (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
 
         Bundle b = Mockito.mock(Bundle.class);
         Bundle b2 = Mockito.mock(Bundle.class);
@@ -536,11 +581,19 @@ public class ServiceRegistryTest extends TestCase
         fail("TODO");
     }
 
-    private Object getPrivateField(Object sr) throws NoSuchFieldException,
+    private Object getPrivateField(Object obj, String fieldName) throws NoSuchFieldException,
             IllegalAccessException
     {
-        Field f = ServiceRegistry.class.getDeclaredField("m_inUseMap");
+        Field f = ServiceRegistry.class.getDeclaredField(fieldName);
         f.setAccessible(true);
-        return f.get(sr);
+        return f.get(obj);
+    }
+
+    private void setPrivateField(ServiceRegistry obj, String fieldName, Object val) throws SecurityException,
+            NoSuchFieldException, IllegalArgumentException, IllegalAccessException
+    {
+        Field f = ServiceRegistry.class.getDeclaredField(fieldName);
+        f.setAccessible(true);
+        f.set(obj, val);
     }
 }
