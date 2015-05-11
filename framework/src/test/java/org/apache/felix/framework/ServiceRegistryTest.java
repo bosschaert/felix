@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import junit.framework.TestCase;
 
@@ -356,7 +357,7 @@ public class ServiceRegistryTest extends TestCase
     }
 
     @SuppressWarnings("unchecked")
-    public void testGetServiceHolderAwait() {
+    public void testGetServiceHolderAwait() throws Exception {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         final String svc = "test";
@@ -374,17 +375,33 @@ public class ServiceRegistryTest extends TestCase
         final ServiceHolder sh = new ServiceHolder();
         uc.m_svcHolderRef.set(sh);
 
-        new Thread() {
+        final StringBuilder sb = new StringBuilder();
+        final AtomicBoolean threadException = new AtomicBoolean(false);
+        Thread t = new Thread() {
             @Override
             public void run()
             {
-                try { Thread.sleep(100); } catch (InterruptedException e) {}
+                try { Thread.sleep(250); } catch (InterruptedException e) {}
                 sh.m_service = svc;
+                if (sb.length() > 0)
+                {
+                    // Should not have put anything in SB yet...
+                    threadException.set(true);
+                }
                 sh.m_latch.countDown();
             }
-        }.start();
+        };
+        assertFalse(t.isInterrupted());
+        t.start();
 
-        assertSame(svc, sr.getService(b, ref, false));
+        Object actualSvc = sr.getService(b, ref, false);
+        sb.append(actualSvc);
+
+        t.join();
+        assertFalse("This thread did not wait until the latch was count down",
+                threadException.get());
+
+        assertSame(svc, actualSvc);
     }
 
     @SuppressWarnings("unchecked")
