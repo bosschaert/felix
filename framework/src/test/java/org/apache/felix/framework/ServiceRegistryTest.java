@@ -26,13 +26,16 @@ import java.util.concurrent.ConcurrentMap;
 
 import junit.framework.TestCase;
 
+import org.apache.felix.framework.ServiceRegistrationImpl.ServiceReferenceImpl;
 import org.apache.felix.framework.ServiceRegistry.ServiceHolder;
 import org.apache.felix.framework.ServiceRegistry.UsageCount;
 import org.mockito.AdditionalAnswers;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.osgi.framework.Bundle;
+import org.osgi.framework.ServiceException;
 import org.osgi.framework.ServiceReference;
 
 public class ServiceRegistryTest extends TestCase
@@ -334,6 +337,99 @@ public class ServiceRegistryTest extends TestCase
         assertEquals("Unregistration should have no effect", 0, sr.getHookRegistry().getHooks(ListenerHook.class).size());
     }
     */ // TODO re-enable
+
+    @SuppressWarnings("unchecked")
+    public void testGetService() {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        String svc = "foo";
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+        Mockito.when(reg.isValid()).thenReturn(true);
+        Mockito.when(reg.getService(b)).thenReturn(svc);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        assertSame(svc, sr.getService(b, ref, false));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testGetServiceHolderAwait() {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        String svc = "test";
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+        Mockito.when(reg.isValid()).thenReturn(true);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        UsageCount uc = sr.obtainUsageCount(b, ref, null, false);
+
+        // Set an empty Service Holder so we can test that it waits.
+        final ServiceHolder sh = new ServiceHolder();
+        uc.m_svcHolderRef.set(sh);
+
+        new Thread() {
+            @Override
+            public void run()
+            {
+                try { Thread.sleep(100); } catch (InterruptedException e) {}
+                sh.m_service = svc;
+                sh.m_latch.countDown();
+            }
+        }.start();
+
+        assertSame(svc, sr.getService(b, ref, false));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testGetServiceThreadMarking() throws Exception {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        sr.getService(b, ref, false);
+
+        InOrder inOrder = Mockito.inOrder(reg);
+        inOrder.verify(reg, Mockito.times(1)).currentThreadMarked();
+        inOrder.verify(reg, Mockito.times(1)).markCurrentThread();
+        inOrder.verify(reg, Mockito.times(1)).unmarkCurrentThread();
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testGetServiceThreadMarking2() throws Exception {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        String svc = "bar";
+
+        Bundle b = Mockito.mock(Bundle.class);
+
+        ServiceRegistrationImpl reg = (ServiceRegistrationImpl) sr.registerService(
+                b, new String [] {String.class.getName()}, svc, null);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        reg.markCurrentThread();
+        try
+        {
+            sr.getService(b, ref, false);
+            fail("Should have thrown an exception to signal reentrant behaviour");
+        }
+        catch (ServiceException se)
+        {
+            assertEquals(ServiceException.FACTORY_ERROR, se.getType());
+        }
+    }
 
     public void testObtainUsageCount() throws Exception
     {
