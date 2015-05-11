@@ -340,7 +340,8 @@ public class ServiceRegistryTest extends TestCase
     */ // TODO re-enable
 
     @SuppressWarnings("unchecked")
-    public void testGetService() {
+    public void testGetService()
+    {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         String svc = "foo";
@@ -357,7 +358,8 @@ public class ServiceRegistryTest extends TestCase
     }
 
     @SuppressWarnings("unchecked")
-    public void testGetServiceHolderAwait() throws Exception {
+    public void testGetServiceHolderAwait() throws Exception
+    {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         final String svc = "test";
@@ -385,7 +387,7 @@ public class ServiceRegistryTest extends TestCase
                 sh.m_service = svc;
                 if (sb.length() > 0)
                 {
-                    // Should not have put anything in SB yet...
+                    // Should not have put anything in SB until countDown() was called...
                     threadException.set(true);
                 }
                 sh.m_latch.countDown();
@@ -405,7 +407,8 @@ public class ServiceRegistryTest extends TestCase
     }
 
     @SuppressWarnings("unchecked")
-    public void testGetServicePrototype() {
+    public void testGetServicePrototype()
+    {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         String svc = "xyz";
@@ -428,7 +431,8 @@ public class ServiceRegistryTest extends TestCase
     }
 
     @SuppressWarnings("unchecked")
-    public void testGetServiceThreadMarking() throws Exception {
+    public void testGetServiceThreadMarking() throws Exception
+    {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         Bundle b = Mockito.mock(Bundle.class);
@@ -446,7 +450,8 @@ public class ServiceRegistryTest extends TestCase
     }
 
     @SuppressWarnings("unchecked")
-    public void testGetServiceThreadMarking2() throws Exception {
+    public void testGetServiceThreadMarking2() throws Exception
+    {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
         String svc = "bar";
@@ -468,6 +473,200 @@ public class ServiceRegistryTest extends TestCase
         catch (ServiceException se)
         {
             assertEquals(ServiceException.FACTORY_ERROR, se.getType());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testUngetService() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        final ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+                (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+
+        UsageCount uc = new UsageCount(ref, false);
+        uc.m_svcHolderRef.set(new ServiceHolder());
+
+        inUseMap.put(b, new UsageCount[] {uc});
+
+        assertTrue(sr.ungetService(b, ref, null));
+        assertNull(uc.m_svcHolderRef.get());
+        assertNull(inUseMap.get(b));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testUngetService2() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        final ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+                (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+
+        UsageCount uc = new UsageCount(ref, false);
+        uc.m_svcHolderRef.set(new ServiceHolder());
+        uc.m_count.incrementAndGet();
+
+        Mockito.verify(reg, Mockito.never()).
+            ungetService(Mockito.isA(Bundle.class), Mockito.any());
+        inUseMap.put(b, new UsageCount[] {uc});
+
+        assertTrue(sr.ungetService(b, ref, null));
+        assertNull(uc.m_svcHolderRef.get());
+        assertNull(inUseMap.get(b));
+
+        Mockito.verify(reg, Mockito.times(1)).
+        ungetService(Mockito.isA(Bundle.class), Mockito.any());
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testUngetService3() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+        Mockito.when(reg.isValid()).thenReturn(true);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        final ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+                (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+
+        UsageCount uc = new UsageCount(ref, false);
+        uc.m_svcHolderRef.set(new ServiceHolder());
+        uc.m_count.set(2);
+
+        inUseMap.put(b, new UsageCount[] {uc});
+
+        assertTrue(sr.ungetService(b, ref, null));
+        assertNotNull(uc.m_svcHolderRef.get());
+        assertNotNull(inUseMap.get(b));
+
+        Mockito.verify(reg, Mockito.never()).
+            ungetService(Mockito.isA(Bundle.class), Mockito.any());
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testUngetService4() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+        Mockito.when(reg.isValid()).thenReturn(false);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        final ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+                (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+
+        UsageCount uc = new UsageCount(ref, false);
+        uc.m_svcHolderRef.set(new ServiceHolder());
+        uc.m_count.set(2);
+
+        inUseMap.put(b, new UsageCount[] {uc});
+
+        assertTrue(sr.ungetService(b, ref, null));
+        assertNull(uc.m_svcHolderRef.get());
+        assertNull(inUseMap.get(b));
+
+        Mockito.verify(reg, Mockito.never()).
+            ungetService(Mockito.isA(Bundle.class), Mockito.any());
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testUngetService5() throws Exception
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+        Mockito.doThrow(new RuntimeException("Test!")).when(reg).
+            ungetService(Mockito.isA(Bundle.class), Mockito.any());
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        final ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+                (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+
+        String svc = "myService";
+        UsageCount uc = new UsageCount(ref, false);
+        ServiceHolder sh = new ServiceHolder();
+        sh.m_service = svc;
+        sh.m_latch.countDown();
+        uc.m_svcHolderRef.set(sh);
+        uc.m_count.set(1);
+
+        inUseMap.put(b, new UsageCount[] {uc});
+
+        try
+        {
+            assertTrue(sr.ungetService(b, ref, null));
+            fail("Should have propagated the runtime exception");
+        }
+        catch (RuntimeException re)
+        {
+            assertEquals("Test!", re.getMessage());
+        }
+        assertNull(uc.m_svcHolderRef.get());
+        assertNull(inUseMap.get(b));
+
+        Mockito.verify(reg, Mockito.times(1)).ungetService(b, svc);
+    }
+
+    public void testUngetServiceThreadMarking()
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        assertFalse("There is no usage count, so this method should return false",
+                sr.ungetService(b, ref, null));
+
+        InOrder inOrder = Mockito.inOrder(reg);
+        inOrder.verify(reg, Mockito.times(1)).currentThreadMarked();
+        inOrder.verify(reg, Mockito.times(1)).markCurrentThread();
+        inOrder.verify(reg, Mockito.times(1)).unmarkCurrentThread();
+    }
+
+    public void testUngetServiceThreadMarking2()
+    {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+        Mockito.when(reg.currentThreadMarked()).thenReturn(true);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        try
+        {
+            sr.ungetService(b, ref, null);
+            fail("The thread should be observed as marked and hence throw an exception");
+        }
+        catch (IllegalStateException ise)
+        {
+            // good
         }
     }
 
