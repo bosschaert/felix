@@ -90,12 +90,12 @@ class ServiceRegistrationImpl implements ServiceRegistration
         m_ref = new ServiceReferenceImpl();
     }
 
-    protected synchronized boolean isValid()
+    protected boolean isValid()
     {
         return (m_svcObj != null);
     }
 
-    protected synchronized void invalidate()
+    protected void invalidate()
     {
         m_svcObj = null;
     }
