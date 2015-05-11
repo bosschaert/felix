@@ -359,7 +359,7 @@ public class ServiceRegistryTest extends TestCase
     public void testGetServiceHolderAwait() {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
-        String svc = "test";
+        final String svc = "test";
 
         Bundle b = Mockito.mock(Bundle.class);
         ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
@@ -385,6 +385,29 @@ public class ServiceRegistryTest extends TestCase
         }.start();
 
         assertSame(svc, sr.getService(b, ref, false));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testGetServicePrototype() {
+        ServiceRegistry sr = new ServiceRegistry(null, null);
+
+        String svc = "xyz";
+
+        Bundle b = Mockito.mock(Bundle.class);
+        ServiceRegistrationImpl reg = Mockito.mock(ServiceRegistrationImpl.class);
+        Mockito.when(reg.isValid()).thenReturn(true);
+        Mockito.when(reg.getService(b)).thenReturn(svc);
+
+        ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
+        Mockito.when(ref.getRegistration()).thenReturn(reg);
+
+        // Is this a valid situation??? No Prototype Scope, but ServiceObjects = true...
+//        Mockito.when(ref.getProperty(Constants.SERVICE_SCOPE)).thenReturn(Constants.SCOPE_PROTOTYPE);
+
+        sr.getService(b, ref, true);
+        sr.getService(b, ref, true);
+
+        fail("TODO investigate");
     }
 
     @SuppressWarnings("unchecked")
