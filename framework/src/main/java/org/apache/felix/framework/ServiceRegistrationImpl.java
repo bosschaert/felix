@@ -95,7 +95,7 @@ class ServiceRegistrationImpl implements ServiceRegistration
         return (m_svcObj != null);
     }
 
-    protected void invalidate()
+    protected synchronized void invalidate()
     {
         m_svcObj = null;
     }
