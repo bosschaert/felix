@@ -407,7 +407,7 @@ public class ServiceRegistryTest extends TestCase
     }
 
     @SuppressWarnings("unchecked")
-    public void testGetServicePrototype()
+    public void testGetServicePrototype() throws Exception
     {
         ServiceRegistry sr = new ServiceRegistry(null, null);
 
@@ -421,13 +421,16 @@ public class ServiceRegistryTest extends TestCase
         ServiceReferenceImpl ref = Mockito.mock(ServiceReferenceImpl.class);
         Mockito.when(ref.getRegistration()).thenReturn(reg);
 
-        // Is this a valid situation??? No Prototype Scope, but ServiceObjects = true...
-//        Mockito.when(ref.getProperty(Constants.SERVICE_SCOPE)).thenReturn(Constants.SCOPE_PROTOTYPE);
+        assertSame(svc, sr.getService(b, ref, true));
+
+        final ConcurrentMap<Bundle, UsageCount[]> inUseMap =
+                (ConcurrentMap<Bundle, UsageCount[]>) getPrivateField(sr, "m_inUseMap");
+        UsageCount[] uca = inUseMap.get(b);
+        assertEquals(1, uca.length);
+        assertEquals(1, uca[0].m_serviceObjectsCount.get());
 
         sr.getService(b, ref, true);
-        sr.getService(b, ref, true);
-
-        fail("TODO investigate");
+        assertEquals(2, uca[0].m_serviceObjectsCount.get());
     }
 
     @SuppressWarnings("unchecked")
