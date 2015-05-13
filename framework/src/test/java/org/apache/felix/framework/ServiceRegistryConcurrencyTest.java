@@ -119,10 +119,13 @@ public class ServiceRegistryConcurrencyTest extends TestCase
 
             Thread t1 = new Thread(r);
             Thread t2 = new Thread(r);
+            Thread t3 = new Thread(r);
             t1.start();
             t2.start();
+            t3.start();
             t1.join();
             t2.join();
+            t3.join();
 
             assertEquals("Should not be any exception: " + exceptions, 0, exceptions.size());
         }
