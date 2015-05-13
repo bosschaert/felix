@@ -153,12 +153,6 @@ public class ServiceRegistry
         // If this is a hook, it should be removed.
         this.hookRegistry.removeHooks(reg.getReference());
 
-        // Note that we don't lock the service registration here using
-        // the m_lockedRegsMap because we want to allow bundles to get
-        // the service during the unregistration process. However, since
-        // we do remove the registration from the service registry, no
-        // new bundles will be able to look up the service.
-
         // Now remove the registered service.
         final List<ServiceRegistration<?>> regs = m_regsMap.get(bundle);
         if (regs != null)
@@ -332,9 +326,7 @@ public class ServiceRegistry
                 }
 
                 // If we have a usage count, but no service object, then we haven't
-                // cached the service object yet, so we need to create one now without
-                // holding the lock, since we will potentially call out to a service
-                // factory.
+                // cached the service object yet, so we need to create one.
                 if ((usage != null) && (svcObj == null))
                 {
                     ServiceHolder holder = null;
@@ -359,6 +351,8 @@ public class ServiceRegistry
                             {
                                 try
                                 {
+                                    // Need to ensure that the other thread has obtained
+                                    // the service.
                                     holder.m_latch.await();
                                 }
                                 catch (InterruptedException e)
@@ -403,7 +397,7 @@ public class ServiceRegistry
 
             // Get the usage count.
             UsageCount usage = obtainUsageCount(bundle, ref, svcObj, null);
-            // If there is no cached services, then just return immediately.
+            // If there are no cached services, then just return immediately.
             if (usage == null)
             {
                 return false;
@@ -419,8 +413,7 @@ public class ServiceRegistry
             }
 
             // If usage count will go to zero, then unget the service
-            // from the registration; we do this outside the lock
-            // since this might call out to the service factory.
+            // from the registration.
             try
             {
                 if (usage.m_count.get() == 1)
@@ -433,9 +426,7 @@ public class ServiceRegistry
             finally
             {
                 // Finally, decrement usage count and flush if it goes to zero or
-                // the registration became invalid while we were not holding the
-                // lock. Either way, unlock the service registration so that any
-                // threads waiting for it can continue.
+                // the registration became invalid.
 
                 // Decrement usage count, which spec says should happen after
                 // ungetting the service object.
@@ -534,6 +525,19 @@ public class ServiceRegistry
         return m_logger;
     }
 
+    /**
+     * Obtain a UsageCount object, by looking for an existing one or creating a new one (if possible).
+     * This method tries to find a UsageCount object in the {@code m_inUseMap}. If one is found then
+     * this is returned, otherwise a UsageCount object will be created, but this can only be done if
+     * the {@code isPrototype} parameter is not {@code null}. If {@code isPrototype} is {@code TRUE}
+     * then a new UsageCount object will always be created.
+     * @param bundle The bundle using the service.
+     * @param ref The Service Reference.
+     * @param svcObj A Service Object, if applicable.
+     * @param isPrototype {@code TRUE} if we know that this is a prototype, {@ FALSE} if we know that
+     * it isn't. There are cases where we don't know (the pure lookup case), in that case use {@code null}.
+     * @return The UsageCount object if it could be obtained, or {@code null} otherwise.
+     */
     UsageCount obtainUsageCount(Bundle bundle, ServiceReference<?> ref, Object svcObj, Boolean isPrototype)
     {
         UsageCount usage = null;
@@ -567,7 +571,7 @@ public class ServiceRegistry
                 return null;
             }
 
-            // Add a new Usage Count. TODO explain optimistic mechanism with retry
+            // Add a new Usage Count.
             usage = new UsageCount(ref, isPrototype);
             if (usages == null)
             {
